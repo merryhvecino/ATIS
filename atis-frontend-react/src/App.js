@@ -698,6 +698,7 @@ export default function App(){
   const [alerts, setAlerts] = useState([])
   const [alts, setAlts] = useState({})
   const [view, setView] = useState('home')
+  const [expandedItin, setExpandedItin] = useState(null)
 
   const [modes, setModes] = useState(['bus','train','walk'])
   const [optimize, setOptimize] = useState('fastest')
@@ -1572,10 +1573,10 @@ export default function App(){
                 ) : (
                   <div style={{display:'flex', flexDirection:'column', gap:16}}>
                     {itins.map((it, idx) => (
-                      <div key={it.id} style={{background:'var(--glass-bg)', backdropFilter:'blur(10px)', border:'1px solid var(--glass-border)', borderRadius:16, padding:20, boxShadow:'0 4px 16px rgba(0,0,0,0.08)', transition:'all 0.3s ease', cursor:'pointer'}} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'} onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
+                      <div key={it.id} style={{background:'var(--glass-bg)', backdropFilter:'blur(10px)', border:'1px solid var(--glass-border)', borderRadius:16, padding:20, boxShadow:'0 4px 16px rgba(0,0,0,0.08)', transition:'all 0.3s ease'}} onMouseEnter={e => e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.15)'} onMouseLeave={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'}>
                         <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, flexWrap:'wrap'}}>
                           <div style={{flex:1}}>
-                            <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10}}>
+                            <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10, flexWrap:'wrap'}}>
                               <span style={{background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color:'white', width:32, height:32, borderRadius:'50%', display:'grid', placeItems:'center', fontWeight:700, fontSize:14}}>{idx + 1}</span>
                               <div style={{fontSize:18, fontWeight:700}}>~{it.durationMin} min</div>
                               <div style={{color:'var(--muted)', fontSize:14}}>• {it.transfers} transfers</div>
@@ -1588,10 +1589,229 @@ export default function App(){
                             </div>
                           </div>
                           <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
-                            <button className="btn" onClick={()=>exportPdf(it)}>📄 {text.exportPdf}</button>
-                            <button className="btn btn-primary" onClick={()=>suggestAlt(it)}>🔄 {text.suggestAlt}</button>
+                            <button className="btn" onClick={(e) => {e.stopPropagation(); exportPdf(it)}}>📄 {text.exportPdf}</button>
+                            <button className="btn btn-primary" onClick={(e) => {e.stopPropagation(); suggestAlt(it)}}>🔄 {text.suggestAlt}</button>
+                            <button className="btn" onClick={(e) => {e.stopPropagation(); setExpandedItin(expandedItin === it.id ? null : it.id)}} style={{background: expandedItin === it.id ? 'var(--primary)' : '', color: expandedItin === it.id ? 'white' : ''}}>
+                              {expandedItin === it.id ? '▼ Hide Details' : '▶ View Details'}
+                            </button>
                           </div>
                         </div>
+
+                        {/* Detailed Journey Breakdown */}
+                        {expandedItin === it.id && (
+                          <div style={{
+                            marginTop:20,
+                            padding:20,
+                            background:'linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)',
+                            border:'1px solid rgba(102, 126, 234, 0.2)',
+                            borderRadius:12
+                          }}>
+                            {/* Journey Summary Stats */}
+                            <div style={{
+                              display:'grid',
+                              gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))',
+                              gap:12,
+                              marginBottom:20
+                            }}>
+                              <div style={{padding:12, background:'rgba(255,255,255,0.05)', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)'}}>
+                                <div style={{fontSize:11, opacity:0.6, marginBottom:4}}>💵 Estimated Fare</div>
+                                <div style={{fontSize:16, fontWeight:700}}>${(2.50 + it.transfers * 0.50).toFixed(2)} NZD</div>
+                              </div>
+                              
+                              <div style={{padding:12, background:'rgba(255,255,255,0.05)', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)'}}>
+                                <div style={{fontSize:11, opacity:0.6, marginBottom:4}}>🌱 CO₂ Savings</div>
+                                <div style={{fontSize:16, fontWeight:700}}>{(it.durationMin * 0.05).toFixed(1)} kg</div>
+                              </div>
+                              
+                              <div style={{padding:12, background:'rgba(255,255,255,0.05)', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)'}}>
+                                <div style={{fontSize:11, opacity:0.6, marginBottom:4}}>⏱️ Departure</div>
+                                <div style={{fontSize:16, fontWeight:700}}>In 3 min</div>
+                              </div>
+                              
+                              <div style={{padding:12, background:'rgba(255,255,255,0.05)', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)'}}>
+                                <div style={{fontSize:11, opacity:0.6, marginBottom:4}}>👥 Crowding</div>
+                                <div style={{fontSize:16, fontWeight:700}}>●●○○ Low</div>
+                              </div>
+                              
+                              <div style={{padding:12, background:'rgba(255,255,255,0.05)', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)'}}>
+                                <div style={{fontSize:11, opacity:0.6, marginBottom:4}}>♿ Accessible</div>
+                                <div style={{fontSize:16, fontWeight:700}}>{it.stairs ? '⚠️ Stairs' : '✓ Yes'}</div>
+                              </div>
+                              
+                              <div style={{padding:12, background:'rgba(255,255,255,0.05)', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)'}}>
+                                <div style={{fontSize:11, opacity:0.6, marginBottom:4}}>🔌 Charging</div>
+                                <div style={{fontSize:16, fontWeight:700}}>Available</div>
+                              </div>
+                            </div>
+
+                            {/* Step-by-Step Journey */}
+                            <div style={{marginTop:16}}>
+                              <div style={{fontSize:14, fontWeight:700, marginBottom:12, color:'var(--primary)'}}>
+                                📍 Step-by-Step Journey
+                              </div>
+                              
+                              {/* Generate detailed steps */}
+                              {it.legs.map((leg, legIdx) => {
+                                const isWalk = leg.toLowerCase().includes('walk')
+                                const isBus = leg.toLowerCase().includes('bus')
+                                const isTrain = leg.toLowerCase().includes('train')
+                                const isFerry = leg.toLowerCase().includes('ferry')
+                                const isBike = leg.toLowerCase().includes('bike')
+                                
+                                // Extract route number (e.g., "Bus NX1" -> "NX1")
+                                const routeMatch = leg.match(/(?:Bus|Train)\s+([A-Z0-9]+)/i)
+                                const routeNumber = routeMatch ? routeMatch[1] : null
+                                
+                                return (
+                                  <div key={legIdx} style={{
+                                    display:'flex',
+                                    gap:16,
+                                    marginBottom:16,
+                                    paddingBottom:16,
+                                    borderBottom: legIdx < it.legs.length - 1 ? '1px dashed rgba(255,255,255,0.1)' : 'none'
+                                  }}>
+                                    {/* Step Number & Icon */}
+                                    <div style={{display:'flex', flexDirection:'column', alignItems:'center', minWidth:60}}>
+                                      <div style={{
+                                        width:40,
+                                        height:40,
+                                        borderRadius:'50%',
+                                        background: isWalk ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' :
+                                                   isBus ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' :
+                                                   isTrain ? 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)' :
+                                                   isFerry ? 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)' :
+                                                   'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                                        color:'white',
+                                        display:'grid',
+                                        placeItems:'center',
+                                        fontSize:18,
+                                        fontWeight:700,
+                                        boxShadow:'0 4px 12px rgba(0,0,0,0.2)'
+                                      }}>
+                                        {isWalk ? '🚶' : isBus ? '🚌' : isTrain ? '🚆' : isFerry ? '⛴️' : isBike ? '🚴' : '🚌'}
+                                      </div>
+                                      {legIdx < it.legs.length - 1 && (
+                                        <div style={{width:2, flex:1, background:'rgba(255,255,255,0.2)', minHeight:20, marginTop:8}} />
+                                      )}
+                                    </div>
+                                    
+                                    {/* Step Details */}
+                                    <div style={{flex:1}}>
+                                      <div style={{fontSize:15, fontWeight:700, marginBottom:6}}>
+                                        {leg}
+                                      </div>
+                                      
+                                      {/* Walking Details */}
+                                      {isWalk && (
+                                        <div style={{fontSize:13, color:'rgba(255,255,255,0.7)', marginBottom:8}}>
+                                          <div style={{marginBottom:4}}>📏 Distance: {((it.walk_km || 0.4) / it.legs.filter(l => l.toLowerCase().includes('walk')).length).toFixed(2)} km</div>
+                                          <div style={{marginBottom:4}}>⏱️ Duration: ~{Math.ceil((it.walk_km || 0.4) / it.legs.filter(l => l.toLowerCase().includes('walk')).length * 12)} min</div>
+                                          <button 
+                                            className="btn" 
+                                            onClick={() => {
+                                              // Show walking route on map
+                                              alert(`Walking directions:\n1. Head ${legIdx === 0 ? 'to nearest stop' : 'to your destination'}\n2. Follow pedestrian paths\n3. Cross at designated crossings\n\nOpening map view...`)
+                                              setView('map')
+                                            }}
+                                            style={{
+                                              marginTop:8,
+                                              padding:'6px 12px',
+                                              fontSize:12,
+                                              background:'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                              color:'white',
+                                              border:'none'
+                                            }}
+                                          >
+                                            🗺️ View Walking Route
+                                          </button>
+                                        </div>
+                                      )}
+                                      
+                                      {/* Bus/Train Details */}
+                                      {(isBus || isTrain || isFerry) && (
+                                        <div style={{fontSize:13, color:'rgba(255,255,255,0.7)'}}>
+                                          <div style={{marginBottom:8, padding:10, background:'rgba(255,255,255,0.05)', borderRadius:8}}>
+                                            {routeNumber && (
+                                              <div style={{marginBottom:6}}>
+                                                <span style={{
+                                                  background: isBus ? '#3b82f6' : isTrain ? '#8b5cf6' : '#06b6d4',
+                                                  color:'white',
+                                                  padding:'4px 10px',
+                                                  borderRadius:6,
+                                                  fontSize:13,
+                                                  fontWeight:700,
+                                                  marginRight:8
+                                                }}>
+                                                  {routeNumber}
+                                                </span>
+                                                <span style={{opacity:0.8}}>
+                                                  {isBus ? 'Bus Route' : isTrain ? 'Train Line' : 'Ferry Route'}
+                                                </span>
+                                              </div>
+                                            )}
+                                            <div style={{marginBottom:4}}>🚏 <b>From:</b> Stop #{1000 + legIdx * 100} - {legIdx === 0 ? 'Start Point' : `Transfer Point ${legIdx}`}</div>
+                                            <div style={{marginBottom:4}}>🎯 <b>To:</b> Stop #{1000 + legIdx * 100 + 50} - {legIdx === it.legs.length - 1 ? 'End Point' : 'Next Transfer'}</div>
+                                            <div style={{marginBottom:4}}>⏱️ <b>Next Departure:</b> <span style={{color:'#10b981', fontWeight:600}}>3, 8, 15 min</span></div>
+                                            <div style={{marginBottom:4}}>🪑 <b>Platform/Bay:</b> {isTrain ? 'Platform' : 'Bay'} {legIdx + 1}</div>
+                                            <div style={{marginBottom:4}}>🎫 <b>Zone:</b> Zone {Math.min(legIdx + 1, 3)}</div>
+                                            <div style={{marginBottom:4}}>👥 <b>Current Load:</b> {['Light', 'Moderate', 'Busy'][Math.floor(Math.random() * 3)]}</div>
+                                            {isTrain && <div style={{marginBottom:4}}>🚃 <b>Carriages:</b> 3-car train</div>}
+                                            {isBus && <div style={{marginBottom:4}}>♿ <b>Features:</b> Low-floor, wheelchair accessible</div>}
+                                          </div>
+                                          
+                                          <div style={{display:'flex', gap:8, marginTop:8, flexWrap:'wrap'}}>
+                                            <button 
+                                              className="btn"
+                                              onClick={() => {
+                                                setSelectedStop({stop_id: `${1000 + legIdx * 100}`, name: `Stop ${1000 + legIdx * 100}`})
+                                                setView('home')
+                                              }}
+                                              style={{padding:'6px 12px', fontSize:12}}
+                                            >
+                                              🚏 View Stop Info
+                                            </button>
+                                            <button 
+                                              className="btn"
+                                              onClick={() => alert(`Live tracking for ${routeNumber || 'this route'} will be available soon!`)}
+                                              style={{padding:'6px 12px', fontSize:12}}
+                                            >
+                                              📍 Track Vehicle
+                                            </button>
+                                            <button 
+                                              className="btn"
+                                              onClick={() => alert(`Set reminder for ${routeNumber || 'this departure'}`)}
+                                              style={{padding:'6px 12px', fontSize:12}}
+                                            >
+                                              🔔 Set Reminder
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+
+                            {/* Additional Travel Tips */}
+                            <div style={{
+                              marginTop:20,
+                              padding:12,
+                              background:'rgba(59, 130, 246, 0.1)',
+                              borderLeft:'3px solid #3b82f6',
+                              borderRadius:6
+                            }}>
+                              <div style={{fontSize:13, fontWeight:700, marginBottom:6}}>💡 Travel Tips</div>
+                              <ul style={{fontSize:12, color:'rgba(255,255,255,0.8)', margin:0, paddingLeft:20}}>
+                                <li>Allow 5 extra minutes for unexpected delays</li>
+                                <li>Have your AT HOP card ready before boarding</li>
+                                {it.transfers > 0 && <li>Transfers are free within 30 minutes</li>}
+                                {it.stairs && <li>This route includes stairs - consider accessibility needs</li>}
+                                <li>Check real-time updates before you leave</li>
+                              </ul>
+                            </div>
+                          </div>
+                        )}
                         {alts[it.id] && (
                           <div className="alt" style={{
                             marginTop:16, 
