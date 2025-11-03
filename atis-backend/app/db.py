@@ -14,7 +14,7 @@ def haversine(lat1, lon1, lat2, lon2):
     a = sin(dphi/2)**2 + cos(phi1)*cos(phi2)*sin(dl/2)**2
     return 2*R*atan2(sqrt(a), sqrt(1-a))
 
-def query_nearby_stops(lat, lng, radius=800):
+def query_nearby_stops(lat, lng, radius=900):
     con = connect()
     cur = con.cursor()
     cur.execute("SELECT stop_id, name, lat, lon FROM stops")

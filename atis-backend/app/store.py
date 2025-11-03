@@ -1,8 +1,8 @@
 # app/store.py
-import time, random
+import random
 from .db import query_nearby_stops
 
-def nearby_stops(lat: float, lng: float, radius: float = 800):
+def nearby_stops(lat: float, lng: float, radius: float = 900):
     return query_nearby_stops(lat, lng, radius)
 
 def sample_departures(stop_id: str):
@@ -16,11 +16,11 @@ def sample_departures(stop_id: str):
 
 def _base_options():
     return [
-        {"id": "A", "durationMin": 22, "transfers": 0, "walk_km": 0.4, "stairs": False, "modes": ["bus","walk"], "legs": ["Bus NX1", "Walk"], "reliability": 0.84},
-        {"id": "B", "durationMin": 28, "transfers": 1, "walk_km": 0.9, "stairs": True,  "modes": ["bus","train","walk"], "legs": ["Bus 82", "Train"], "reliability": 0.90},
-        {"id": "C", "durationMin": 24, "transfers": 1, "walk_km": 0.6, "stairs": False, "modes": ["train","walk"], "legs": ["Walk", "Train"], "reliability": 0.88},
-        {"id": "D", "durationMin": 26, "transfers": 0, "walk_km": 0.3, "stairs": False, "modes": ["ferry","walk"], "legs": ["Ferry", "Walk"], "reliability": 0.86},
-        {"id": "E", "durationMin": 27, "transfers": 0, "walk_km": 1.6, "stairs": False, "modes": ["bike","train"], "legs": ["Bike", "Train"], "reliability": 0.82},
+        {"id": "A", "durationMin": 22, "transfers": 0, "walk_km": 0.4, "stairs": False, "modes": ["bus","walk"], "legs": ["Walk to stop", "Bus NX1", "Walk"], "reliability": 0.84},
+        {"id": "B", "durationMin": 28, "transfers": 1, "walk_km": 0.9, "stairs": True,  "modes": ["bus","train","walk"], "legs": ["Walk", "Bus 82", "Train", "Walk"], "reliability": 0.90},
+        {"id": "C", "durationMin": 24, "transfers": 1, "walk_km": 0.6, "stairs": False, "modes": ["train","walk"], "legs": ["Walk", "Train", "Walk"], "reliability": 0.88},
+        {"id": "D", "durationMin": 26, "transfers": 0, "walk_km": 0.3, "stairs": False, "modes": ["ferry","walk"], "legs": ["Walk", "Ferry", "Walk"], "reliability": 0.86},
+        {"id": "E", "durationMin": 27, "transfers": 0, "walk_km": 1.6, "stairs": False, "modes": ["bike","train"], "legs": ["Bike", "Train", "Walk"], "reliability": 0.82},
     ]
 
 def _score_option(o, optimize="fastest", prefers_fewer_transfers=True):
@@ -58,6 +58,19 @@ def sample_weather(point, raw=False):
 
 def sample_traffic(bbox: str):
     return [
-        {"id": "INC-1", "type": "Congestion", "summary": "Heavy traffic near Harbour Bridge", "severity": "moderate"},
+        {"id": "INC-1", "type": "Accident", "summary": "Crash southbound SH1 near Esmonde Rd", "severity": "high"},
         {"id": "INC-2", "type": "Roadworks", "summary": "Lane closure on Fanshawe St", "severity": "low"},
+    ]
+
+def suggest_reroute(current_itinerary, incidents):
+    # Simple heuristic: if incident severity high and current is bus-heavy, suggest train path
+    if any(i.get("severity") == "high" for i in incidents) and "bus" in (current_itinerary.get("modes") or []):
+        return {"id": "ALT1", "durationMin": current_itinerary["durationMin"]+3, "transfers": 1,
+                "walk_km": 0.7, "modes": ["walk","train"], "legs": ["Walk", "Train", "Walk"], "note": "Avoids incident area"}
+    return {"note": "Current route ok"}
+
+def sample_alerts():
+    return [
+        {"type": "weather", "title": "Strong winds from 3–6pm", "severity": "warning"},
+        {"type": "safety", "title": "Major event at Aotea Square — expect delays", "severity": "info"},
     ]
