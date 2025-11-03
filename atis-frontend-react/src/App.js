@@ -15,8 +15,8 @@ L.Icon.Default.mergeOptions({
 
 const TRANSLATIONS = {
   en: {
-    name: 'Advanced Traveler Info',
-    tagline: 'Real-time, multimodal trip planning with smart suggestions.',
+    name: 'Advanced Traveler Information System',
+    tagline: 'Real-time, multimodal trip planning with intelligent route optimization.',
     translatorLabel: 'Preferred language',
     offlineCta: 'Save offline snapshot',
     shareLocation: 'Share Location',
@@ -97,12 +97,17 @@ const CURRENCY_RATES = {
 
 function Chip({children}){ return <span className="chip" style={{marginRight:6}}>{children}</span> }
 
-function FeatureCard({title, description, children}){
+function FeatureCard({title, description, children, icon}){
   return (
-    <section className="card" style={{padding:24, borderRadius:18, border:'1px solid var(--line)', background:'var(--card, #fff)', boxShadow:'0 1px 3px rgba(15,23,42,0.08)', marginBottom:20}}>
-      <div style={{marginBottom:12}}>
-        <div style={{fontSize:18, fontWeight:700}}>{title}</div>
-        {description && <div style={{opacity:0.75, marginTop:4}}>{description}</div>}
+    <section className="card" style={{marginBottom:32}}>
+      <div style={{marginBottom:24}}>
+        <div style={{display:'flex', alignItems:'center', gap:16, marginBottom:10}}>
+          {icon && <div style={{fontSize:42, filter:'drop-shadow(0 4px 8px rgba(0,0,0,0.2))'}}>{icon}</div>}
+          <div>
+            <div style={{fontSize:26, fontWeight:800, background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text', letterSpacing:'-0.5px'}}>{title}</div>
+            {description && <div style={{color:'var(--muted)', fontSize:15, marginTop:6, lineHeight:1.6}}>{description}</div>}
+          </div>
+        </div>
       </div>
       <div>{children}</div>
     </section>
@@ -360,20 +365,21 @@ export default function App(){
   }
 
   return (
-    <div style={{background:'var(--app-bg,#f4f6fb)', minHeight:'100vh', padding:'24px 16px 48px'}}>
-      <div style={{maxWidth:1180, margin:'0 auto'}}>
-        <header style={{display:'flex', flexWrap:'wrap', justifyContent:'space-between', alignItems:'flex-start', gap:16, marginBottom:28}}>
-          <div style={{display:'flex', alignItems:'center', gap:16}}>
-            <div className="logo" style={{width:52, height:52, borderRadius:'50%', background:'var(--primary,#2563eb)', color:'#fff', display:'grid', placeItems:'center', fontWeight:800, fontSize:24}}>A</div>
+    <div style={{minHeight:'100vh', padding:'40px 24px 80px'}}>
+      <div style={{maxWidth:1400, margin:'0 auto'}}>
+        <header style={{background:'var(--glass-bg)', backdropFilter:'blur(30px)', border:'1px solid var(--glass-border)', borderRadius:28, padding:'28px 40px', boxShadow:'var(--card-shadow)', marginBottom:48, display:'flex', flexWrap:'wrap', justifyContent:'space-between', alignItems:'center', gap:28, position:'relative', overflow:'hidden'}}>
+          <div style={{position:'absolute', top:0, right:0, width:'400px', height:'400px', background:'radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%)', pointerEvents:'none'}}></div>
+          <div style={{display:'flex', alignItems:'center', gap:24, position:'relative', zIndex:1}}>
+            <div className="logo">A</div>
             <div>
-              <div style={{fontSize:24, fontWeight:800}}>{text.name}</div>
-              <div style={{color:'var(--muted,#4b5563)', maxWidth:540}}>{text.tagline}</div>
+              <div style={{fontSize:32, fontWeight:900, background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text', letterSpacing:'-1px', lineHeight:1.2}}>{text.name}</div>
+              <div style={{color:'var(--muted)', fontSize:15, marginTop:8, maxWidth:600, fontWeight:500}}>{text.tagline}</div>
             </div>
           </div>
-          <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:10, minWidth:260}}>
-            <div style={{display:'flex', gap:8, alignItems:'center'}}>
-              <span style={{fontSize:12, opacity:0.7}}>{text.translatorLabel}</span>
-              <select value={uiLang} onChange={e=>setUiLang(e.target.value)}>
+          <div style={{display:'flex', alignItems:'center', gap:20, flexWrap:'wrap', position:'relative', zIndex:1}}>
+            <div style={{display:'flex', alignItems:'center', gap:12, background:'var(--glass-bg)', backdropFilter:'blur(20px)', padding:'10px 20px', borderRadius:16, boxShadow:'0 4px 20px rgba(0,0,0,0.15)', border:'1px solid var(--glass-border)'}}>
+              <span style={{fontSize:14, fontWeight:600, color:'var(--muted)'}}>🌐 {text.translatorLabel}</span>
+              <select value={uiLang} onChange={e=>setUiLang(e.target.value)} style={{padding:'8px 12px', fontSize:14, fontWeight:700}}>
                 {languageOptions.map(code => <option key={code} value={code}>{code.toUpperCase()}</option>)}
               </select>
             </div>
@@ -382,17 +388,17 @@ export default function App(){
         </header>
 
         <main>
-          <FeatureCard title="🗺️ Interactive Map" description="Drag origin marker, click map to set destination, view nearby stops">
-            <div style={{height:400, width:'100%'}}>
+          <FeatureCard icon="🗺️" title="Interactive Map" description="Drag origin marker, click map to set destination, view nearby stops">
+            <div style={{height:450, width:'100%', borderRadius:16, overflow:'hidden', boxShadow:'0 8px 24px rgba(0,0,0,0.12)'}}>
               <InteractiveMap origin={origin} setOrigin={setOrigin} dest={dest} setDest={setDest} stops={stops} />
             </div>
-            <div style={{marginTop:12, display:'flex', gap:8, flexWrap:'wrap'}}>
-              <button className="btn" onClick={shareLocation}>{text.shareLocation}</button>
-              <button className="btn" onClick={() => navigator.clipboard.writeText(`${origin[0].toFixed(5)}, ${origin[1].toFixed(5)}`).then(() => alert(text.locationCopied))}>{text.copyCoords}</button>
+            <div style={{marginTop:16, display:'flex', gap:10, flexWrap:'wrap'}}>
+              <button className="btn btn-primary" onClick={shareLocation}>📍 {text.shareLocation}</button>
+              <button className="btn" onClick={() => navigator.clipboard.writeText(`${origin[0].toFixed(5)}, ${origin[1].toFixed(5)}`).then(() => alert(text.locationCopied))}>📋 {text.copyCoords}</button>
             </div>
           </FeatureCard>
 
-          <FeatureCard title={text.realTimeSnapshot} description="Live traffic, weather and notifications so riders stay ahead.">
+          <FeatureCard icon="⚡" title={text.realTimeSnapshot} description="Live traffic, weather and notifications so riders stay ahead.">
             <div style={{display:'flex', flexWrap:'wrap', gap:16}}>
               <div style={{flex:'1 1 200px', minWidth:220}}>
                 <div style={{fontWeight:600, marginBottom:6}}>{text.weatherNow}</div>
@@ -422,7 +428,7 @@ export default function App(){
             </div>
           </FeatureCard>
 
-          <FeatureCard title={text.tripPlanning} description="Plan ahead, adapt on the fly, and export journeys for the road.">
+          <FeatureCard icon="🧭" title={text.tripPlanning} description="Plan ahead, adapt on the fly, and export journeys for the road.">
             <div style={{display:'grid', gap:24, gridTemplateColumns:'minmax(260px, 1fr) minmax(320px, 1.35fr)'}}>
               <div style={{display:'flex', flexDirection:'column', gap:12}}>
                 <label style={{display:'flex', flexDirection:'column', gap:4}}>
@@ -477,41 +483,50 @@ export default function App(){
               </div>
               <div>
                 {itins.length === 0 ? (
-                  <p style={{opacity:0.75}}>Press <b>Find itineraries</b> to see recommended routes.</p>
+                  <div style={{textAlign:'center', padding:'40px 20px', background:'var(--glass-bg)', backdropFilter:'blur(10px)', borderRadius:16, border:'1px dashed var(--line)'}}>
+                    <div style={{fontSize:48, marginBottom:12}}>🚀</div>
+                    <p style={{color:'var(--muted)', fontSize:15}}>Press <b style={{color:'var(--primary)'}}>Find itineraries</b> to see recommended routes.</p>
+                  </div>
                 ) : (
-                  <ol style={{paddingLeft:20, margin:0, display:'flex', flexDirection:'column', gap:12}}>
-                    {itins.map(it => (
-                      <li key={it.id} style={{padding:'12px 0', borderTop:'1px solid var(--line,#e5e7eb)'}}>
-                        <div style={{display:'flex', justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>
-                          <div>
-                            <div><strong>~{it.durationMin} min</strong> • {it.transfers} transfers • <span title="Reliability score">{Math.round((it.reliability||0)*100)}%</span></div>
-                            <div style={{opacity:0.75}}>legs: {it.legs.join(' → ')}</div>
-                            <div style={{marginTop:6}}>
-                              <Chip>{(it.walk_km ?? 0).toFixed(1)} km walk</Chip>
+                  <div style={{display:'flex', flexDirection:'column', gap:16}}>
+                    {itins.map((it, idx) => (
+                      <div key={it.id} style={{background:'var(--glass-bg)', backdropFilter:'blur(10px)', border:'1px solid var(--glass-border)', borderRadius:16, padding:20, boxShadow:'0 4px 16px rgba(0,0,0,0.08)', transition:'all 0.3s ease', cursor:'pointer'}} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'} onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, flexWrap:'wrap'}}>
+                          <div style={{flex:1}}>
+                            <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10}}>
+                              <span style={{background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color:'white', width:32, height:32, borderRadius:'50%', display:'grid', placeItems:'center', fontWeight:700, fontSize:14}}>{idx + 1}</span>
+                              <div style={{fontSize:18, fontWeight:700}}>~{it.durationMin} min</div>
+                              <div style={{color:'var(--muted)', fontSize:14}}>• {it.transfers} transfers</div>
+                              <div style={{background:it.reliability > 0.85 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(251, 191, 36, 0.15)', color:it.reliability > 0.85 ? 'var(--success)' : '#f59e0b', padding:'4px 10px', borderRadius:8, fontSize:12, fontWeight:600}}>{Math.round((it.reliability||0)*100)}% reliable</div>
+                            </div>
+                            <div style={{color:'var(--muted)', fontSize:14, marginBottom:10}}>🚶 {it.legs.join(' → ')}</div>
+                            <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+                              <Chip>🚶 {(it.walk_km ?? 0).toFixed(1)} km walk</Chip>
                               <Chip>{(it.modes||[]).join(', ')}</Chip>
                             </div>
                           </div>
-                          <div style={{display:'flex', gap:8}}>
-                            <button className="btn" onClick={()=>exportPdf(it)}>{text.exportPdf}</button>
-                            <button className="btn" onClick={()=>suggestAlt(it)}>{text.suggestAlt}</button>
+                          <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+                            <button className="btn" onClick={()=>exportPdf(it)}>📄 {text.exportPdf}</button>
+                            <button className="btn btn-primary" onClick={()=>suggestAlt(it)}>🔄 {text.suggestAlt}</button>
                           </div>
                         </div>
                         {alts[it.id] && (
-                          <div style={{marginTop:10, padding:12, borderRadius:12, background:'rgba(22,163,74,0.08)'}}>
-                            <div><strong>Alternative:</strong> ~{alts[it.id].durationMin || '—'} min • {alts[it.id].transfers || 0} transfers</div>
-                            {alts[it.id].note && <div style={{opacity:0.75}}>{alts[it.id].note}</div>}
-                            {alts[it.id].legs && <div style={{opacity:0.75}}>legs: {alts[it.id].legs.join(' → ')}</div>}
+                          <div className="alt" style={{marginTop:16}}>
+                            <div style={{fontWeight:600, marginBottom:6}}>✨ Alternative route available</div>
+                            <div style={{color:'var(--muted)', fontSize:14}}>~{alts[it.id].durationMin || '—'} min • {alts[it.id].transfers || 0} transfers</div>
+                            {alts[it.id].note && <div style={{color:'var(--muted)', fontSize:14, marginTop:4}}>{alts[it.id].note}</div>}
+                            {alts[it.id].legs && <div style={{color:'var(--muted)', fontSize:14}}>🚶 {alts[it.id].legs.join(' → ')}</div>}
                           </div>
                         )}
-                      </li>
+                      </div>
                     ))}
-                  </ol>
+                  </div>
                 )}
               </div>
             </div>
           </FeatureCard>
 
-          <FeatureCard title="Multimodal & nearby options" description="Check nearby stops, live departures, and multimodal choices.">
+          <FeatureCard icon="🚍" title="Multimodal & nearby options" description="Check nearby stops, live departures, and multimodal choices.">
             <div style={{display:'flex', flexDirection:'column', gap:18}}>
               <div style={{display:'flex', flexWrap:'wrap', gap:12}}>
                 {stops.slice(0,6).map(s => (
@@ -537,7 +552,7 @@ export default function App(){
             </div>
           </FeatureCard>
 
-          <FeatureCard title="Personalization & safety" description="Save favourites, keep data offline, and access emergency support.">
+          <FeatureCard icon="🛟" title="Personalization & safety" description="Save favourites, keep data offline, and access emergency support.">
             <div style={{display:'flex', flexWrap:'wrap', gap:20}}>
               <div style={{flex:'1 1 260px', display:'flex', flexDirection:'column', gap:10}}>
                 <div style={{fontWeight:600}}>Quick actions</div>
@@ -570,7 +585,7 @@ export default function App(){
             </div>
           </FeatureCard>
 
-          <FeatureCard title="Travel toolkit" description="International tools for language, money, and bookings.">
+          <FeatureCard icon="🌍" title="Travel toolkit" description="International tools for language, money, and bookings.">
             <div style={{display:'flex', flexWrap:'wrap', gap:20}}>
               <div style={{flex:'1 1 220px'}}>
                 <div style={{fontWeight:600, marginBottom:6}}>In-app translator</div>
@@ -597,7 +612,7 @@ export default function App(){
             </div>
           </FeatureCard>
 
-          <FeatureCard title="Community insights" description="Crowd-sourced tips keep travellers informed.">
+          <FeatureCard icon="⭐" title="Community insights" description="Crowd-sourced tips keep travellers informed.">
             <div style={{display:'flex', flexWrap:'wrap', gap:20}}>
               <div style={{flex:'1 1 260px', display:'flex', flexDirection:'column', gap:10}}>
                 <label style={{display:'flex', flexDirection:'column', gap:4}}>
