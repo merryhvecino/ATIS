@@ -186,42 +186,495 @@ function AuthPanel({token, setToken, username, setUsername}){
   const [mode, setMode] = useState('login')
   const [user, setUser] = useState('')
   const [pass, setPass] = useState('')
+  const [email, setEmail] = useState('')
+  const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [strength, setStrength] = useState(0)
+  const [rememberMe, setRememberMe] = useState(true)
+  const [showAuthModal, setShowAuthModal] = useState(false)
 
   useEffect(()=>{
-    const t = localStorage.getItem('atis_token')
-    const u = localStorage.getItem('atis_user')
+    const t = localStorage.getItem('atis_token') || sessionStorage.getItem('atis_token')
+    const u = localStorage.getItem('atis_user') || sessionStorage.getItem('atis_user')
     if (t && u){ setToken(t); setUsername(u) }
   }, [setToken, setUsername])
 
-  const submit = async () => {
-    setError('')
-    try{
-      const r = await fetch(`${API}/auth/${mode}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:user, password:pass}) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.detail || 'Auth failed')
-      setToken(d.token); setUsername(d.username)
-      localStorage.setItem('atis_token', d.token); localStorage.setItem('atis_user', d.username)
-      setUser(''); setPass('')
-    }catch(e){ setError(e.message) }
+  useEffect(() => {
+    if (mode === 'register' && pass) {
+      let score = 0
+      if (pass.length >= 8) score++
+      if (pass.length >= 12) score++
+      if (/[a-z]/.test(pass) && /[A-Z]/.test(pass)) score++
+      if (/[0-9]/.test(pass)) score++
+      if (/[^a-zA-Z0-9]/.test(pass)) score++
+      setStrength(score)
+    }
+  }, [pass, mode])
+
+  const validateEmail = (email) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   }
 
-  const logout = () => { setToken(null); setUsername(null); localStorage.removeItem('atis_token'); localStorage.removeItem('atis_user') }
+  const submit = async (e) => {
+    e?.preventDefault()
+    setError('')
+    
+    // Validation
+    if (!user || user.length < 3) {
+      setError('Username must be at least 3 characters')
+      return
+    }
+    if (!pass || pass.length < 6) {
+      setError('Password must be at least 6 characters')
+      return
+    }
+    if (mode === 'register') {
+      if (!email || !validateEmail(email)) {
+        setError('Please enter a valid email address')
+        return
+      }
+      if (strength < 3) {
+        setError('Password is too weak. Use mix of letters, numbers, and symbols.')
+        return
+      }
+    }
+    
+    setLoading(true)
+    try{
+      const payload = mode === 'register' 
+        ? {username: user, password: pass, email: email}
+        : {username: user, password: pass}
+      
+      const r = await fetch(`${API}/auth/${mode}`, { 
+        method:'POST', 
+        headers:{'Content-Type':'application/json'}, 
+        body: JSON.stringify(payload) 
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.detail || 'Authentication failed')
+      
+      setToken(d.token); setUsername(d.username)
+      
+      // Store based on remember me preference
+      const storage = rememberMe ? localStorage : sessionStorage
+      storage.setItem('atis_token', d.token)
+      storage.setItem('atis_user', d.username)
+      storage.setItem('atis_login_time', Date.now().toString())
+      
+      setUser(''); setPass(''); setEmail('')
+      setShowAuthModal(false)
+    }catch(e){ 
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const logout = () => { 
+    setToken(null)
+    setUsername(null)
+    setIsAuthenticated(false)
+    localStorage.removeItem('atis_token')
+    localStorage.removeItem('atis_user')
+    localStorage.removeItem('atis_login_time')
+    sessionStorage.removeItem('atis_token')
+    sessionStorage.removeItem('atis_user')
+    sessionStorage.removeItem('atis_login_time')
+    toast('👋 Logged out')
+  }
+
+  const getStrengthColor = () => {
+    if (strength <= 2) return '#ef4444'
+    if (strength <= 3) return '#f59e0b'
+    return '#10b981'
+  }
+
+  const getStrengthText = () => {
+    if (strength <= 2) return 'Weak'
+    if (strength <= 3) return 'Medium'
+    return 'Strong'
+  }
+
+  if (token) {
+    return (
+      <div style={{display:'flex', alignItems:'center', gap:16}}>
+        <div className="pill" style={{display:'flex', alignItems:'center', gap:10}}>
+          <div style={{width:32, height:32, borderRadius:'50%', background:'var(--gradient-1)', display:'grid', placeItems:'center', color:'white', fontWeight:700, fontSize:14}}>
+            {username[0].toUpperCase()}
+          </div>
+          <div>
+            <div style={{fontSize:13, fontWeight:600}}>{username}</div>
+            <div style={{fontSize:11, color:'var(--muted)'}}>Verified</div>
+          </div>
+        </div>
+        <button className="btn btn-danger" onClick={logout}>🚪 Logout</button>
+      </div>
+    )
+  }
 
   return (
-    <div className="toolbar">
-      {token ? (<><span className="pill">Signed in as <b>{username}</b></span><button className="btn btn-danger" onClick={logout}>Logout</button></>) : (
-        <>
-          <select value={mode} onChange={e=>setMode(e.target.value)} style={{width:130}}>
-            <option value="login">Login</option>
-            <option value="register">Register</option>
-          </select>
-          <input placeholder="Username" value={user} onChange={e=>setUser(e.target.value)} style={{width:140}} />
-          <input type="password" placeholder="Password" value={pass} onChange={e=>setPass(e.target.value)} style={{width:140}} />
-          <button className="btn btn-primary" onClick={submit}>{mode.toUpperCase()}</button>
-          {error && <span style={{color:'var(--danger)'}}>{error}</span>}
-        </>
+    <>
+      <button className="btn btn-primary" onClick={() => setShowAuthModal(true)}>
+        🔐 Sign In
+      </button>
+      
+      {showAuthModal && (
+        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.7)', backdropFilter:'blur(8px)', display:'grid', placeItems:'center', zIndex:9999, padding:20}} onClick={() => setShowAuthModal(false)}>
+          <div style={{background:'var(--glass-bg)', backdropFilter:'blur(30px)', border:'1px solid var(--glass-border)', borderRadius:28, padding:40, maxWidth:480, width:'100%', boxShadow:'var(--card-shadow)'}} onClick={e => e.stopPropagation()}>
+            <div style={{textAlign:'center', marginBottom:32}}>
+              <div style={{fontSize:32, marginBottom:12}}>🔐</div>
+              <h2 style={{fontSize:28, fontWeight:800, marginBottom:8, background:'var(--gradient-1)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent'}}>
+                {mode === 'login' ? 'Welcome Back' : 'Create Account'}
+              </h2>
+              <p style={{color:'var(--muted)', fontSize:14}}>
+                {mode === 'login' ? 'Sign in to access your personalized travel experience' : 'Join ATIS for smart route planning'}
+              </p>
+            </div>
+
+            <form onSubmit={submit} style={{display:'flex', flexDirection:'column', gap:20}}>
+              <div>
+                <label style={{display:'block', marginBottom:8, fontSize:13, fontWeight:600, color:'var(--muted)'}}>Username</label>
+                <input 
+                  type="text"
+                  placeholder="Enter username" 
+                  value={user} 
+                  onChange={e=>setUser(e.target.value)}
+                  style={{width:'100%'}}
+                  autoComplete="username"
+                  disabled={loading}
+                />
+              </div>
+
+              {mode === 'register' && (
+                <div>
+                  <label style={{display:'block', marginBottom:8, fontSize:13, fontWeight:600, color:'var(--muted)'}}>Email</label>
+                  <input 
+                    type="email"
+                    placeholder="your.email@example.com" 
+                    value={email} 
+                    onChange={e=>setEmail(e.target.value)}
+                    style={{width:'100%'}}
+                    autoComplete="email"
+                    disabled={loading}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label style={{display:'block', marginBottom:8, fontSize:13, fontWeight:600, color:'var(--muted)'}}>Password</label>
+                <div style={{position:'relative'}}>
+                  <input 
+                    type={showPass ? 'text' : 'password'}
+                    placeholder="Enter password" 
+                    value={pass} 
+                    onChange={e=>setPass(e.target.value)}
+                    style={{width:'100%', paddingRight:45}}
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    disabled={loading}
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    style={{position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', fontSize:18}}
+                  >
+                    {showPass ? '👁️' : '👁️‍🗨️'}
+                  </button>
+                </div>
+                {mode === 'register' && pass && (
+                  <div style={{marginTop:8}}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4}}>
+                      <span style={{fontSize:12, color:'var(--muted)'}}>Password strength:</span>
+                      <span style={{fontSize:12, fontWeight:600, color:getStrengthColor()}}>{getStrengthText()}</span>
+                    </div>
+                    <div style={{height:4, background:'rgba(255,255,255,0.1)', borderRadius:2, overflow:'hidden'}}>
+                      <div style={{height:'100%', width:`${(strength / 5) * 100}%`, background:getStrengthColor(), transition:'all 0.3s'}}></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {mode === 'login' && (
+                <label style={{display:'flex', alignItems:'center', gap:8, cursor:'pointer', userSelect:'none'}}>
+                  <input 
+                    type="checkbox" 
+                    checked={rememberMe} 
+                    onChange={e => setRememberMe(e.target.checked)}
+                    disabled={loading}
+                  />
+                  <span style={{fontSize:13, color:'var(--muted)'}}>Remember me for 30 days</span>
+                </label>
+              )}
+
+              {error && (
+                <div style={{padding:12, background:'rgba(239, 68, 68, 0.1)', border:'1px solid var(--danger)', borderRadius:12, color:'var(--danger)', fontSize:13, textAlign:'center'}}>
+                  ⚠️ {error}
+                </div>
+              )}
+
+              <button 
+                type="submit" 
+                className="btn btn-primary" 
+                style={{width:'100%', padding:16, fontSize:16}}
+                disabled={loading}
+              >
+                {loading ? '⏳ Processing...' : mode === 'login' ? '🚀 Sign In' : '✨ Create Account'}
+              </button>
+
+              <div style={{textAlign:'center'}}>
+                <button 
+                  type="button"
+                  onClick={() => {setMode(mode === 'login' ? 'register' : 'login'); setError('')}}
+                  style={{background:'none', border:'none', color:'var(--primary)', cursor:'pointer', fontSize:14, fontWeight:600}}
+                  disabled={loading}
+                >
+                  {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+                </button>
+              </div>
+            </form>
+
+            <button 
+              onClick={() => setShowAuthModal(false)}
+              style={{position:'absolute', top:20, right:20, background:'var(--glass-bg)', border:'1px solid var(--glass-border)', borderRadius:'50%', width:36, height:36, display:'grid', placeItems:'center', cursor:'pointer', fontSize:18}}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
       )}
+    </>
+  )
+}
+
+function LoginPage({onLogin}){
+  const [mode, setMode] = useState('login')
+  const [user, setUser] = useState('')
+  const [pass, setPass] = useState('')
+  const [email, setEmail] = useState('')
+  const [showPass, setShowPass] = useState(false)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [strength, setStrength] = useState(0)
+
+  useEffect(() => {
+    if (mode === 'register' && pass) {
+      let score = 0
+      if (pass.length >= 8) score++
+      if (pass.length >= 12) score++
+      if (/[a-z]/.test(pass) && /[A-Z]/.test(pass)) score++
+      if (/[0-9]/.test(pass)) score++
+      if (/[^a-zA-Z0-9]/.test(pass)) score++
+      setStrength(score)
+    }
+  }, [pass, mode])
+
+  const validateEmail = (email) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  }
+
+  const submit = async (e) => {
+    e?.preventDefault()
+    setError('')
+    
+    if (!user || user.length < 3) {
+      setError('Username must be at least 3 characters')
+      return
+    }
+    if (!pass || pass.length < 6) {
+      setError('Password must be at least 6 characters')
+      return
+    }
+    if (mode === 'register') {
+      if (!email || !validateEmail(email)) {
+        setError('Please enter a valid email address')
+        return
+      }
+      if (strength < 3) {
+        setError('Password is too weak. Use mix of letters, numbers, and symbols.')
+        return
+      }
+    }
+    
+    setLoading(true)
+    try{
+      const payload = mode === 'register' 
+        ? {username: user, password: pass, email: email}
+        : {username: user, password: pass}
+      
+      const r = await fetch(`${API}/auth/${mode}`, { 
+        method:'POST', 
+        headers:{'Content-Type':'application/json'}, 
+        body: JSON.stringify(payload) 
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.detail || 'Authentication failed')
+      
+      localStorage.setItem('atis_token', d.token)
+      localStorage.setItem('atis_user', d.username)
+      localStorage.setItem('atis_login_time', Date.now().toString())
+      
+      onLogin(d.token, d.username)
+    }catch(e){ 
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const getStrengthColor = () => {
+    if (strength <= 2) return '#ef4444'
+    if (strength <= 3) return '#f59e0b'
+    return '#10b981'
+  }
+
+  const getStrengthText = () => {
+    if (strength <= 2) return 'Weak'
+    if (strength <= 3) return 'Medium'
+    return 'Strong'
+  }
+
+  return (
+    <div style={{minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20, position:'relative', overflow:'hidden'}}>
+      {/* Animated background gradient circles */}
+      <div style={{position:'absolute', top:'-10%', left:'-5%', width:'500px', height:'500px', background:'radial-gradient(circle, rgba(102, 126, 234, 0.3) 0%, transparent 70%)', filter:'blur(80px)', animation:'float 8s ease-in-out infinite'}}></div>
+      <div style={{position:'absolute', bottom:'-10%', right:'-5%', width:'500px', height:'500px', background:'radial-gradient(circle, rgba(139, 92, 246, 0.3) 0%, transparent 70%)', filter:'blur(80px)', animation:'float 10s ease-in-out infinite reverse'}}></div>
+      
+      <div style={{maxWidth:480, width:'100%', position:'relative', zIndex:1}}>
+        {/* Logo and Welcome Section */}
+        <div style={{textAlign:'center', marginBottom:40}}>
+          <img 
+            src="/atis-logo.jpg" 
+            alt="ATIS Logo" 
+            style={{width:120, height:120, margin:'0 auto 24px', filter:'drop-shadow(0 8px 24px rgba(0,0,0,0.3))', objectFit:'contain', borderRadius:24}}
+            onError={(e) => {
+              e.target.style.display = 'none'
+            }}
+          />
+          <h1 style={{fontSize:42, fontWeight:900, marginBottom:12, background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', letterSpacing:'-1px'}}>
+            Welcome to ATIS
+          </h1>
+          <p style={{fontSize:16, color:'var(--muted)', marginBottom:8}}>Advanced Traveler Information System</p>
+          <p style={{fontSize:14, color:'var(--muted)'}}>Intelligent route planning for smarter journeys</p>
+        </div>
+
+        {/* Login Form Card */}
+        <div style={{background:'var(--glass-bg)', backdropFilter:'blur(30px)', border:'1px solid var(--glass-border)', borderRadius:28, padding:40, boxShadow:'var(--card-shadow)'}}>
+          <div style={{textAlign:'center', marginBottom:32}}>
+            <h2 style={{fontSize:26, fontWeight:800, marginBottom:8}}>
+              {mode === 'login' ? '🔐 Sign In' : '✨ Create Account'}
+            </h2>
+            <p style={{color:'var(--muted)', fontSize:14}}>
+              {mode === 'login' ? 'Access your personalized travel experience' : 'Join for smart route planning'}
+            </p>
+          </div>
+
+          <form onSubmit={submit} style={{display:'flex', flexDirection:'column', gap:20}}>
+            <div>
+              <label style={{display:'block', marginBottom:8, fontSize:13, fontWeight:600, color:'var(--muted)'}}>Username</label>
+              <input 
+                type="text"
+                placeholder="Enter username" 
+                value={user} 
+                onChange={e=>setUser(e.target.value)}
+                style={{width:'100%'}}
+                autoComplete="username"
+                disabled={loading}
+                required
+              />
+            </div>
+
+            {mode === 'register' && (
+              <div>
+                <label style={{display:'block', marginBottom:8, fontSize:13, fontWeight:600, color:'var(--muted)'}}>Email</label>
+                <input 
+                  type="email"
+                  placeholder="your.email@example.com" 
+                  value={email} 
+                  onChange={e=>setEmail(e.target.value)}
+                  style={{width:'100%'}}
+                  autoComplete="email"
+                  disabled={loading}
+                  required
+                />
+              </div>
+            )}
+
+            <div>
+              <label style={{display:'block', marginBottom:8, fontSize:13, fontWeight:600, color:'var(--muted)'}}>Password</label>
+              <div style={{position:'relative'}}>
+                <input 
+                  type={showPass ? 'text' : 'password'}
+                  placeholder="Enter password" 
+                  value={pass} 
+                  onChange={e=>setPass(e.target.value)}
+                  style={{width:'100%', paddingRight:45}}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  disabled={loading}
+                  required
+                />
+                <button 
+                  type="button"
+                  onClick={() => setShowPass(!showPass)}
+                  style={{position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', fontSize:18}}
+                >
+                  {showPass ? '👁️' : '👁️‍🗨️'}
+                </button>
+              </div>
+              {mode === 'register' && pass && (
+                <div style={{marginTop:8}}>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4}}>
+                    <span style={{fontSize:12, color:'var(--muted)'}}>Password strength:</span>
+                    <span style={{fontSize:12, fontWeight:600, color:getStrengthColor()}}>{getStrengthText()}</span>
+                  </div>
+                  <div style={{height:4, background:'rgba(255,255,255,0.1)', borderRadius:2, overflow:'hidden'}}>
+                    <div style={{height:'100%', width:`${(strength / 5) * 100}%`, background:getStrengthColor(), transition:'all 0.3s'}}></div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {error && (
+              <div style={{padding:12, background:'rgba(239, 68, 68, 0.1)', border:'1px solid var(--danger)', borderRadius:12, color:'var(--danger)', fontSize:13, textAlign:'center'}}>
+                ⚠️ {error}
+              </div>
+            )}
+
+            <button 
+              type="submit" 
+              className="btn btn-primary" 
+              style={{width:'100%', padding:16, fontSize:16}}
+              disabled={loading}
+            >
+              {loading ? '⏳ Processing...' : mode === 'login' ? '🚀 Sign In' : '✨ Create Account'}
+            </button>
+
+            <div style={{textAlign:'center'}}>
+              <button 
+                type="button"
+                onClick={() => {setMode(mode === 'login' ? 'register' : 'login'); setError('')}}
+                style={{background:'none', border:'none', color:'var(--primary)', cursor:'pointer', fontSize:14, fontWeight:600}}
+                disabled={loading}
+              >
+                {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Features Preview */}
+        <div style={{marginTop:32, textAlign:'center', color:'var(--muted)', fontSize:13}}>
+          <p style={{marginBottom:12}}>✨ Real-time traffic & transit data</p>
+          <p style={{marginBottom:12}}>🗺️ Interactive route planning</p>
+          <p>🌍 Multi-language support</p>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(0) scale(1); }
+          50% { transform: translateY(-20px) scale(1.05); }
+        }
+      `}</style>
     </div>
   )
 }
@@ -229,6 +682,29 @@ function AuthPanel({token, setToken, username, setUsername}){
 export default function App(){
   const [token, setToken] = useState(null)
   const [username, setUsername] = useState(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+
+  // Check for existing session on mount
+  useEffect(() => {
+    const savedToken = localStorage.getItem('atis_token')
+    const savedUser = localStorage.getItem('atis_user')
+    if (savedToken && savedUser) {
+      setToken(savedToken)
+      setUsername(savedUser)
+      setIsAuthenticated(true)
+    }
+  }, [])
+
+  const handleLogin = (token, username) => {
+    setToken(token)
+    setUsername(username)
+    setIsAuthenticated(true)
+  }
+
+  // Show login page if not authenticated
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={handleLogin} />
+  }
 
   const [origin, setOrigin] = useState([-36.8485, 174.7633])
   const [dest, setDest] = useState([-36.8443, 174.7676])
@@ -370,7 +846,16 @@ export default function App(){
         <header style={{background:'var(--glass-bg)', backdropFilter:'blur(30px)', border:'1px solid var(--glass-border)', borderRadius:28, padding:'28px 40px', boxShadow:'var(--card-shadow)', marginBottom:48, display:'flex', flexWrap:'wrap', justifyContent:'space-between', alignItems:'center', gap:28, position:'relative', overflow:'hidden'}}>
           <div style={{position:'absolute', top:0, right:0, width:'400px', height:'400px', background:'radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%)', pointerEvents:'none'}}></div>
           <div style={{display:'flex', alignItems:'center', gap:24, position:'relative', zIndex:1}}>
-            <div className="logo">A</div>
+            <img 
+              src="/atis-logo.jpg" 
+              alt="ATIS Logo" 
+              style={{width:80, height:80, filter:'drop-shadow(0 4px 12px rgba(0,0,0,0.2))', objectFit:'contain', borderRadius:16}}
+              onError={(e) => {
+                e.target.style.display = 'none'
+                e.target.nextElementSibling.style.display = 'grid'
+              }}
+            />
+            <div className="logo" style={{display:'none'}}>A</div>
             <div>
               <div style={{fontSize:32, fontWeight:900, background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text', letterSpacing:'-1px', lineHeight:1.2}}>{text.name}</div>
               <div style={{color:'var(--muted)', fontSize:15, marginTop:8, maxWidth:600, fontWeight:500}}>{text.tagline}</div>
