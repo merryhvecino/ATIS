@@ -1,5 +1,5 @@
 # app/init_db.py
-import sqlite3, os, json
+import sqlite3, os
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "atis.db")
 

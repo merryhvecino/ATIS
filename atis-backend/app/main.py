@@ -1,15 +1,14 @@
 # app/main.py
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Literal
 import time
 
 from .store import nearby_stops, sample_departures, sample_itineraries, sample_weather, sample_traffic
 
-app = FastAPI(title="ATIS Demo API", version="0.1.0")
+app = FastAPI(title="ATIS Demo API", version="0.2.0")
 
-# CORS for local Vite dev server
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -31,14 +30,28 @@ def departures(stop_id: str):
     return {"stop_id": stop_id, "departures": sample_departures(stop_id)}
 
 class PlanRequest(BaseModel):
-    origin: List[float]  # [lat, lng]
-    destination: List[float]  # [lat, lng]
+    origin: List[float]
+    destination: List[float]
     depart_at: Optional[str] = "now"
+    arrive_by: Optional[str] = None
     prefers_fewer_transfers: Optional[bool] = True
+    optimize: Optional[Literal["fastest","fewest_transfers","least_walking","reliable"]] = "fastest"
+    max_walk_km: Optional[float] = 1.2
+    avoid_stairs: Optional[bool] = False
+    bike_ok: Optional[bool] = False
+    modes: Optional[List[Literal["bus","train","ferry","walk","bike"]]] = ["bus","train","walk"]
 
 @app.post("/plan")
 def plan(req: PlanRequest):
-    itins = sample_itineraries(req.origin, req.destination, req.prefers_fewer_transfers)
+    itins = sample_itineraries(
+        req.origin, req.destination,
+        prefers_fewer_transfers=req.prefers_fewer_transfers,
+        optimize=req.optimize,
+        max_walk_km=req.max_walk_km,
+        avoid_stairs=req.avoid_stairs,
+        bike_ok=req.bike_ok,
+        modes=req.modes
+    )
     return {"itineraries": itins, "context": {"weatherAlert": sample_weather(req.origin)}}
 
 @app.get("/weather/point")

@@ -7,11 +7,12 @@ def connect():
 
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371000
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dl = math.radians(lon2 - lon1)
-    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dl/2)**2
-    return 2*R*math.atan2(math.sqrt(a), math.sqrt(1-a))
+    from math import radians, sin, cos, atan2, sqrt
+    phi1, phi2 = radians(lat1), radians(lat2)
+    dphi = radians(lat2 - lat1)
+    dl = radians(lon2 - lon1)
+    a = sin(dphi/2)**2 + cos(phi1)*cos(phi2)*sin(dl/2)**2
+    return 2*R*atan2(sqrt(a), sqrt(1-a))
 
 def query_nearby_stops(lat, lng, radius=800):
     con = connect()
