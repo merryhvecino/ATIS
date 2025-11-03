@@ -446,7 +446,7 @@ function AuthPanel({token, setToken, username, setUsername}){
   )
 }
 
-function LoginPage({onLogin}){
+function LoginPage({onLogin, isVerifying}){
   const [mode, setMode] = useState('login')
   const [user, setUser] = useState('')
   const [pass, setPass] = useState('')
@@ -554,17 +554,19 @@ function LoginPage({onLogin}){
             Welcome to ATIS
           </h1>
           <p style={{fontSize:16, color:'var(--muted)', marginBottom:8}}>Advanced Traveler Information System</p>
-          <p style={{fontSize:14, color:'var(--muted)'}}>Intelligent route planning for smarter journeys</p>
+          <p style={{fontSize:14, color:'var(--muted)'}}>
+            {isVerifying ? '🔄 Verifying session...' : 'Intelligent route planning for smarter journeys'}
+          </p>
         </div>
 
         {/* Login Form Card */}
-        <div style={{background:'var(--glass-bg)', backdropFilter:'blur(30px)', border:'1px solid var(--glass-border)', borderRadius:28, padding:40, boxShadow:'var(--card-shadow)'}}>
+        <div style={{background:'var(--glass-bg)', backdropFilter:'blur(30px)', border:'1px solid var(--glass-border)', borderRadius:28, padding:40, boxShadow:'var(--card-shadow)', opacity: isVerifying ? 0.6 : 1, pointerEvents: isVerifying ? 'none' : 'auto', transition:'opacity 0.2s'}}>
           <div style={{textAlign:'center', marginBottom:32}}>
             <h2 style={{fontSize:26, fontWeight:800, marginBottom:8}}>
-              {mode === 'login' ? '🔐 Sign In' : '✨ Create Account'}
+              {isVerifying ? '⏳ Loading...' : mode === 'login' ? '🔐 Sign In' : '✨ Create Account'}
             </h2>
             <p style={{color:'var(--muted)', fontSize:14}}>
-              {mode === 'login' ? 'Access your personalized travel experience' : 'Join for smart route planning'}
+              {isVerifying ? 'Please wait...' : mode === 'login' ? 'Access your personalized travel experience' : 'Join for smart route planning'}
             </p>
           </div>
 
@@ -680,32 +682,72 @@ function LoginPage({onLogin}){
 }
 
 export default function App(){
-  const [token, setToken] = useState(null)
-  const [username, setUsername] = useState(null)
+  const [token, setToken] = useState(() => localStorage.getItem('atis_token'))
+  const [username, setUsername] = useState(() => localStorage.getItem('atis_user'))
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isVerifying, setIsVerifying] = useState(true)
 
-  // Check for existing session on mount
+  // Check for existing session on mount and verify with backend
   useEffect(() => {
-    const savedToken = localStorage.getItem('atis_token')
-    const savedUser = localStorage.getItem('atis_user')
-    if (savedToken && savedUser) {
-      setToken(savedToken)
-      setUsername(savedUser)
-      setIsAuthenticated(true)
+    let mounted = true
+    
+    const verifySession = async () => {
+      const savedToken = localStorage.getItem('atis_token')
+      const savedUser = localStorage.getItem('atis_user')
+      
+      if (savedToken && savedUser) {
+        try {
+          // Verify token with backend
+          const response = await fetch(`${API}/auth/verify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${savedToken}`
+            }
+          })
+          
+          if (!mounted) return
+          
+          if (response.ok) {
+            // Token is valid - update state in one batch
+            setToken(savedToken)
+            setUsername(savedUser)
+            setIsAuthenticated(true)
+          } else {
+            // Token is invalid, clear storage
+            localStorage.removeItem('atis_token')
+            localStorage.removeItem('atis_user')
+            localStorage.removeItem('atis_login_time')
+            setToken(null)
+            setUsername(null)
+            setIsAuthenticated(false)
+          }
+        } catch (error) {
+          // Network error or backend down, clear session
+          if (!mounted) return
+          console.error('Session verification failed:', error)
+          localStorage.removeItem('atis_token')
+          localStorage.removeItem('atis_user')
+          localStorage.removeItem('atis_login_time')
+          setToken(null)
+          setUsername(null)
+          setIsAuthenticated(false)
+        }
+      }
+      
+      if (mounted) {
+        setIsVerifying(false)
+      }
+    }
+    
+    verifySession()
+    
+    return () => {
+      mounted = false
     }
   }, [])
 
-  const handleLogin = (token, username) => {
-    setToken(token)
-    setUsername(username)
-    setIsAuthenticated(true)
-  }
-
-  // Show login page if not authenticated
-  if (!isAuthenticated) {
-    return <LoginPage onLogin={handleLogin} />
-  }
-
+  // ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS
   const [origin, setOrigin] = useState([-36.8485, 174.7633])
   const [dest, setDest] = useState([-36.8443, 174.7676])
   const [stops, setStops] = useState([])
@@ -715,6 +757,7 @@ export default function App(){
   const [departures, setDepartures] = useState([])
   const [alerts, setAlerts] = useState([])
   const [alts, setAlts] = useState({})
+  const [view, setView] = useState('home')
 
   const [modes, setModes] = useState(['bus','train','walk'])
   const [optimize, setOptimize] = useState('fastest')
@@ -737,6 +780,14 @@ export default function App(){
   const [reviewLoc, setReviewLoc] = useState('')
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
+
+  // Location search states
+  const [originSearch, setOriginSearch] = useState('')
+  const [destSearch, setDestSearch] = useState('')
+  const [originName, setOriginName] = useState('Auckland CBD')
+  const [destName, setDestName] = useState('Auckland Airport')
+  const [searchResults, setSearchResults] = useState([])
+  const [searchingFor, setSearchingFor] = useState(null) // 'origin' or 'dest'
 
   // Load initial data once
   useEffect(() => {
@@ -828,7 +879,14 @@ export default function App(){
   }
 
   const toggleMode = (m) => setModes(prev => prev.includes(m) ? prev.filter(x => x!==m) : [...prev, m])
-  const swapOD = () => { const o = origin; setOrigin(dest); setDest(o) }
+  const swapOD = () => { 
+    const o = origin
+    const oName = originName
+    setOrigin(dest)
+    setDest(o)
+    setOriginName(destName)
+    setDestName(oName)
+  }
   
   const shareLocation = () => {
     const coords = `${origin[0].toFixed(5)}, ${origin[1].toFixed(5)}`
@@ -840,40 +898,237 @@ export default function App(){
     })
   }
 
+  // Geocoding: Search for places by name using Nominatim (OpenStreetMap)
+  const searchLocation = async (query, type) => {
+    if (!query || query.length < 3) {
+      setSearchResults([])
+      return
+    }
+    
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Auckland, New Zealand')}&limit=5`
+      )
+      const data = await response.json()
+      setSearchResults(data)
+      setSearchingFor(type)
+    } catch (error) {
+      console.error('Search error:', error)
+      setSearchResults([])
+    }
+  }
+
+  // Select a location from search results
+  const selectLocation = (result) => {
+    const lat = parseFloat(result.lat)
+    const lng = parseFloat(result.lon)
+    const name = result.display_name.split(',')[0] // Get primary name
+    
+    if (searchingFor === 'origin') {
+      setOrigin([lat, lng])
+      setOriginName(name)
+      setOriginSearch('')
+    } else {
+      setDest([lat, lng])
+      setDestName(name)
+      setDestSearch('')
+    }
+    
+    setSearchResults([])
+    setSearchingFor(null)
+  }
+
+  // Use current location
+  const useCurrentLocation = (type) => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const lat = position.coords.latitude
+          const lng = position.coords.longitude
+          
+          // Reverse geocode to get place name
+          try {
+            const response = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+            )
+            const data = await response.json()
+            const name = data.address?.suburb || data.address?.city || data.address?.town || 'Current Location'
+            
+            if (type === 'origin') {
+              setOrigin([lat, lng])
+              setOriginName(name)
+            } else {
+              setDest([lat, lng])
+              setDestName(name)
+            }
+          } catch (error) {
+            if (type === 'origin') {
+              setOrigin([lat, lng])
+              setOriginName('Current Location')
+            } else {
+              setDest([lat, lng])
+              setDestName('Current Location')
+            }
+          }
+        },
+        (error) => {
+          alert('Could not get your location. Please enable location services.')
+        }
+      )
+    } else {
+      alert('Geolocation is not supported by your browser.')
+    }
+  }
+
+  const handleLogin = (token, username) => {
+    setToken(token)
+    setUsername(username)
+    setIsAuthenticated(true)
+  }
+
+  const logout = () => { 
+    setToken(null)
+    setUsername(null)
+    setIsAuthenticated(false)
+    localStorage.removeItem('atis_token')
+    localStorage.removeItem('atis_user')
+    localStorage.removeItem('atis_login_time')
+    sessionStorage.removeItem('atis_token')
+    sessionStorage.removeItem('atis_user')
+    sessionStorage.removeItem('atis_login_time')
+    setView('home')
+  }
+
+  // Show login page if not authenticated - NO ACCESS TO MAIN APP
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={handleLogin} isVerifying={isVerifying} />
+  }
+
   return (
-    <div style={{minHeight:'100vh', padding:'40px 24px 80px'}}>
-      <div style={{maxWidth:1400, margin:'0 auto'}}>
-        <header style={{background:'var(--glass-bg)', backdropFilter:'blur(30px)', border:'1px solid var(--glass-border)', borderRadius:28, padding:'28px 40px', boxShadow:'var(--card-shadow)', marginBottom:48, display:'flex', flexWrap:'wrap', justifyContent:'space-between', alignItems:'center', gap:28, position:'relative', overflow:'hidden'}}>
-          <div style={{position:'absolute', top:0, right:0, width:'400px', height:'400px', background:'radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%)', pointerEvents:'none'}}></div>
-          <div style={{display:'flex', alignItems:'center', gap:24, position:'relative', zIndex:1}}>
-            <img 
-              src="/atis-logo.jpg" 
-              alt="ATIS Logo" 
-              style={{width:80, height:80, filter:'drop-shadow(0 4px 12px rgba(0,0,0,0.2))', objectFit:'contain', borderRadius:16}}
+    <div style={{minHeight:'100vh', padding:'0', background:'var(--app-bg)'}}>
+      {/* Modern Top Navigation Bar */}
+      <nav style={{
+        position:'sticky', top:0, zIndex:1000,
+        background:'var(--glass-bg)', backdropFilter:'blur(20px)', 
+        borderBottom:'1px solid var(--glass-border)',
+        boxShadow:'0 4px 24px rgba(0,0,0,0.1)'
+      }}>
+        <div style={{maxWidth:1400, margin:'0 auto', padding:'16px 24px', display:'flex', alignItems:'center', justifyContent:'space-between', gap:20}}>
+          {/* Logo and Title */}
+          <div style={{display:'flex', alignItems:'center', gap:16}}>
+            <img
+              src="/atis-logo.jpg"
+              alt="ATIS"
+              style={{width:48, height:48, borderRadius:12, objectFit:'contain', boxShadow:'0 4px 12px rgba(0,0,0,0.2)'}}
               onError={(e) => {
                 e.target.style.display = 'none'
                 e.target.nextElementSibling.style.display = 'grid'
               }}
             />
-            <div className="logo" style={{display:'none'}}>A</div>
+            <div className="logo" style={{display:'none', width:48, height:48, fontSize:20}}>A</div>
             <div>
-              <div style={{fontSize:32, fontWeight:900, background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text', letterSpacing:'-1px', lineHeight:1.2}}>{text.name}</div>
-              <div style={{color:'var(--muted)', fontSize:15, marginTop:8, maxWidth:600, fontWeight:500}}>{text.tagline}</div>
+              <h1 style={{fontSize:22, fontWeight:800, lineHeight:1, marginBottom:4}}>ATIS</h1>
+              <p style={{fontSize:12, color:'var(--muted)', lineHeight:1}}>Advanced Travel System</p>
             </div>
           </div>
-          <div style={{display:'flex', alignItems:'center', gap:20, flexWrap:'wrap', position:'relative', zIndex:1}}>
-            <div style={{display:'flex', alignItems:'center', gap:12, background:'var(--glass-bg)', backdropFilter:'blur(20px)', padding:'10px 20px', borderRadius:16, boxShadow:'0 4px 20px rgba(0,0,0,0.15)', border:'1px solid var(--glass-border)'}}>
-              <span style={{fontSize:14, fontWeight:600, color:'var(--muted)'}}>🌐 {text.translatorLabel}</span>
-              <select value={uiLang} onChange={e=>setUiLang(e.target.value)} style={{padding:'8px 12px', fontSize:14, fontWeight:700}}>
-                {languageOptions.map(code => <option key={code} value={code}>{code.toUpperCase()}</option>)}
-              </select>
-            </div>
-            <AuthPanel token={token} setToken={setToken} username={username} setUsername={setUsername} />
-          </div>
-        </header>
 
-        <main>
-          <FeatureCard icon="🗺️" title="Interactive Map" description="Drag origin marker, click map to set destination, view nearby stops">
+          {/* Navigation Tabs */}
+          <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+            {['home','plan','map','alerts','safety','reviews','settings'].map(v => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={view === v ? 'btn btn-primary' : 'chip'}
+                style={{
+                  padding:'8px 16px',
+                  fontSize:13,
+                  fontWeight:600,
+                  textTransform:'capitalize',
+                  transition:'all 0.3s'
+                }}
+              >
+                {v === 'home' && '🏠'} {v === 'plan' && '🗺️'} {v === 'map' && '🌍'}
+                {v === 'alerts' && '⚠️'} {v === 'safety' && '🛡️'} {v === 'reviews' && '⭐'}
+                {v === 'settings' && '⚙️'} {' '}{v.charAt(0).toUpperCase() + v.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* User Profile */}
+          <div style={{display:'flex', alignItems:'center', gap:12}}>
+            <div style={{textAlign:'right'}}>
+              <div style={{fontSize:14, fontWeight:600}}>{username || 'Guest'}</div>
+              <div style={{fontSize:11, color:'var(--muted)'}}>Active Session</div>
+            </div>
+            <button onClick={logout} className="btn btn-danger" style={{padding:'8px 16px', fontSize:13}}>
+              🚪 Logout
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content Container */}
+      <div style={{maxWidth:1400, margin:'0 auto', padding:'32px 24px 80px'}}>
+        
+        {/* View-Based Content Rendering */}
+        {view === 'home' && (
+          <>
+            {/* Quick Stats Dashboard */}
+            <div className="grid-3" style={{marginBottom:32}}>
+              <div className="stat-card">
+                <div className="stat-value">{stops.length}</div>
+                <div className="stat-label">Nearby Stops</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-value">{itins.length}</div>
+                <div className="stat-label">Routes Found</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-value">{alerts.length}</div>
+                <div className="stat-label">Active Alerts</div>
+              </div>
+            </div>
+
+            {/* Welcome Card */}
+            <div className="card" style={{marginBottom:32, background:'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)', border:'1px solid rgba(102, 126, 234, 0.3)'}}>
+              <h2 style={{fontSize:28, fontWeight:800, marginBottom:12, background:'var(--gradient-1)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent'}}>
+                Welcome back, {username}! 👋
+              </h2>
+              <p style={{color:'var(--muted)', fontSize:15}}>
+                Your intelligent travel companion for smarter journeys. Plan trips, check real-time updates, and navigate with confidence.
+              </p>
+            </div>
+
+            {/* Feature Overview Grid */}
+            <div className="grid-2" style={{marginBottom:32}}>
+              <div className="card" onClick={() => setView('plan')} style={{cursor:'pointer'}}>
+                <div style={{fontSize:48, marginBottom:16}}>🗺️</div>
+                <h3 style={{fontSize:20, fontWeight:700, marginBottom:8}}>Trip Planning</h3>
+                <p style={{color:'var(--muted)', fontSize:14}}>Plan multi-modal journeys with real-time data and alternative routes</p>
+              </div>
+              <div className="card" onClick={() => setView('map')} style={{cursor:'pointer'}}>
+                <div style={{fontSize:48, marginBottom:16}}>🌍</div>
+                <h3 style={{fontSize:20, fontWeight:700, marginBottom:8}}>Interactive Map</h3>
+                <p style={{color:'var(--muted)', fontSize:14}}>Explore nearby stops, set destinations, and visualize your route</p>
+              </div>
+              <div className="card" onClick={() => setView('alerts')} style={{cursor:'pointer'}}>
+                <div style={{fontSize:48, marginBottom:16}}>⚠️</div>
+                <h3 style={{fontSize:20, fontWeight:700, marginBottom:8}}>Live Alerts</h3>
+                <p style={{color:'var(--muted)', fontSize:14}}>Stay updated with traffic incidents and service disruptions</p>
+              </div>
+              <div className="card" onClick={() => setView('safety')} style={{cursor:'pointer'}}>
+                <div style={{fontSize:48, marginBottom:16}}>🛡️</div>
+                <h3 style={{fontSize:20, fontWeight:700, marginBottom:8}}>Safety Features</h3>
+                <p style={{color:'var(--muted)', fontSize:14}}>Emergency contacts and location sharing for peace of mind</p>
+              </div>
+            </div>
+          </>
+        )}
+
+        {view === 'map' && (
+          <div>
+            <h2 className="section-title">🌍 Interactive Map</h2>
+          <FeatureCard icon="🗺️" title="Map View" description="Drag origin marker, click map to set destination, view nearby stops">
             <div style={{height:450, width:'100%', borderRadius:16, overflow:'hidden', boxShadow:'0 8px 24px rgba(0,0,0,0.12)'}}>
               <InteractiveMap origin={origin} setOrigin={setOrigin} dest={dest} setDest={setDest} stops={stops} />
             </div>
@@ -882,7 +1137,12 @@ export default function App(){
               <button className="btn" onClick={() => navigator.clipboard.writeText(`${origin[0].toFixed(5)}, ${origin[1].toFixed(5)}`).then(() => alert(text.locationCopied))}>📋 {text.copyCoords}</button>
             </div>
           </FeatureCard>
+          </div>
+        )}
 
+        {view === 'alerts' && (
+          <div>
+            <h2 className="section-title">⚠️ Live Alerts & Weather</h2>
           <FeatureCard icon="⚡" title={text.realTimeSnapshot} description="Live traffic, weather and notifications so riders stay ahead.">
             <div style={{display:'flex', flexWrap:'wrap', gap:16}}>
               <div style={{flex:'1 1 200px', minWidth:220}}>
@@ -912,7 +1172,12 @@ export default function App(){
               )}
             </div>
           </FeatureCard>
+          </div>
+        )}
 
+        {view === 'plan' && (
+          <div>
+            <h2 className="section-title">🗺️ Trip Planning</h2>
           <FeatureCard icon="🧭" title={text.tripPlanning} description="Plan ahead, adapt on the fly, and export journeys for the road.">
             <div style={{display:'grid', gap:24, gridTemplateColumns:'minmax(260px, 1fr) minmax(320px, 1.35fr)'}}>
               <div style={{display:'flex', flexDirection:'column', gap:12}}>
@@ -1011,7 +1276,7 @@ export default function App(){
             </div>
           </FeatureCard>
 
-          <FeatureCard icon="🚍" title="Multimodal & nearby options" description="Check nearby stops, live departures, and multimodal choices.">
+          <FeatureCard icon="🚍" title="Nearby Transit" description="Check nearby stops, live departures, and multimodal choices.">
             <div style={{display:'flex', flexDirection:'column', gap:18}}>
               <div style={{display:'flex', flexWrap:'wrap', gap:12}}>
                 {stops.slice(0,6).map(s => (
@@ -1036,8 +1301,13 @@ export default function App(){
               )}
             </div>
           </FeatureCard>
+          </div>
+        )}
 
-          <FeatureCard icon="🛟" title="Personalization & safety" description="Save favourites, keep data offline, and access emergency support.">
+        {view === 'safety' && (
+          <div>
+            <h2 className="section-title">🛡️ Safety & Emergency</h2>
+          <FeatureCard icon="📞" title="Emergency Contacts" description="Quick access to local emergency services.">
             <div style={{display:'flex', flexWrap:'wrap', gap:20}}>
               <div style={{flex:'1 1 260px', display:'flex', flexDirection:'column', gap:10}}>
                 <div style={{fontWeight:600}}>Quick actions</div>
@@ -1069,8 +1339,13 @@ export default function App(){
               </div>
             </div>
           </FeatureCard>
+          </div>
+        )}
 
-          <FeatureCard icon="🌍" title="Travel toolkit" description="International tools for language, money, and bookings.">
+        {view === 'settings' && (
+          <div>
+            <h2 className="section-title">⚙️ Settings & Preferences</h2>
+          <FeatureCard icon="🌍" title="Travel Toolkit" description="International tools for language, money, and bookings.">
             <div style={{display:'flex', flexWrap:'wrap', gap:20}}>
               <div style={{flex:'1 1 220px'}}>
                 <div style={{fontWeight:600, marginBottom:6}}>In-app translator</div>
@@ -1096,8 +1371,13 @@ export default function App(){
               </div>
             </div>
           </FeatureCard>
+          </div>
+        )}
 
-          <FeatureCard icon="⭐" title="Community insights" description="Crowd-sourced tips keep travellers informed.">
+        {view === 'reviews' && (
+          <div>
+            <h2 className="section-title">⭐ Community Reviews</h2>
+          <FeatureCard icon="⭐" title="Share Your Experience" description="Crowd-sourced tips keep travellers informed.">
             <div style={{display:'flex', flexWrap:'wrap', gap:20}}>
               <div style={{flex:'1 1 260px', display:'flex', flexDirection:'column', gap:10}}>
                 <label style={{display:'flex', flexDirection:'column', gap:4}}>
@@ -1127,7 +1407,9 @@ export default function App(){
               </div>
             </div>
           </FeatureCard>
-        </main>
+          </div>
+        )}
+
       </div>
     </div>
   )

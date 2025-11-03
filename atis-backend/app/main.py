@@ -54,6 +54,19 @@ def auth_login(req: AuthReq):
     token = issue_token(req.username)
     return {"token": token, "username": req.username}
 
+@app.post("/auth/verify")
+def auth_verify(authorization: str = Header(None)):
+    """Verify if a token is valid"""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Invalid authorization header")
+    
+    token = authorization.replace("Bearer ", "")
+    try:
+        user = decode_token(token)
+        return {"valid": True, "username": user}
+    except:
+        raise HTTPException(401, "Invalid or expired token")
+
 @app.get("/me")
 def me(user: str = Depends(require_auth)):
     return {"username": user}

@@ -8,5 +8,10 @@
     "salt": "b0d7b8986bcd70f2",
     "pw": "926287b2089d5fc9ac0cb21b56ee5e5780002c2185dd339afcbe4e5039cef8d1",
     "created": 1762149169
+  },
+  "sugaraunty": {
+    "salt": "8a78911650f8e93e",
+    "pw": "0297481c64e40519dff3e52c435ddfba0b398b3bb93560da85d3d77571ed2b10",
+    "created": 1762154825
   }
 }
