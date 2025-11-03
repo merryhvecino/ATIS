@@ -110,12 +110,71 @@ def plan(req: PlanRequest):
 class RerouteRequest(BaseModel):
     current_itinerary: dict
     incidents: Optional[List[dict]] = []
+    origin: Optional[List[float]] = None
+    destination: Optional[List[float]] = None
+    preferences: Optional[dict] = {}
 
 @app.post("/routes/suggest")
 def routes_suggest(req: RerouteRequest):
     prov = Providers()
     incidents = prov.incidents() if prov.USE_REAL else (req.incidents or [])
-    return {"alternative": suggest_reroute(req.current_itinerary, incidents)}
+    alternative = suggest_reroute(req.current_itinerary, incidents)
+    
+    # Enhance with detailed comparison and recommendations
+    current_duration = req.current_itinerary.get('duration', 0)
+    alt_duration = alternative.get('duration', current_duration)
+    
+    current_transfers = req.current_itinerary.get('transfers', 0)
+    alt_transfers = alternative.get('transfers', 0)
+    
+    current_walk = req.current_itinerary.get('walk_distance', 0)
+    alt_walk = alternative.get('walk_distance', 0)
+    
+    benefits = []
+    warnings = []
+    
+    # Analyze benefits
+    if alt_duration < current_duration:
+        time_saved = (current_duration - alt_duration) / 60
+        benefits.append(f"Saves {int(time_saved)} minutes")
+    
+    if alt_transfers < current_transfers:
+        benefits.append(f"Fewer transfers ({alt_transfers} vs {current_transfers})")
+    elif alt_transfers == 0:
+        benefits.append("Direct route - no transfers needed")
+    
+    if alt_walk < current_walk:
+        benefits.append(f"Less walking ({alt_walk:.1f}km vs {current_walk:.1f}km)")
+    
+    if len(incidents) > 0:
+        benefits.append("Avoids current traffic incidents")
+    
+    # Analyze warnings
+    if alt_duration > current_duration:
+        extra_time = (alt_duration - current_duration) / 60
+        warnings.append(f"Takes {int(extra_time)} minutes longer")
+    
+    if alt_transfers > current_transfers:
+        warnings.append(f"More transfers required ({alt_transfers})")
+    
+    if alt_walk > current_walk:
+        warnings.append(f"More walking required ({alt_walk:.1f}km)")
+    
+    # Determine reason
+    reason = "Alternative route available"
+    if len(incidents) > 0:
+        reason = "Avoiding traffic incident"
+    elif alt_duration < current_duration and alt_transfers <= current_transfers:
+        reason = "Faster route found"
+    elif alt_transfers < current_transfers:
+        reason = "Route with fewer transfers"
+    
+    return {
+        "alternative": alternative,
+        "reason": reason,
+        "benefits": benefits,
+        "warnings": warnings
+    }
 
 # ---------- Alerts & Weather ----------
 @app.get("/alerts")

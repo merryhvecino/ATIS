@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
@@ -682,10 +682,52 @@ function LoginPage({onLogin, isVerifying}){
 }
 
 export default function App(){
+  // ALL STATE HOOKS MUST BE DECLARED FIRST
   const [token, setToken] = useState(() => localStorage.getItem('atis_token'))
   const [username, setUsername] = useState(() => localStorage.getItem('atis_user'))
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isVerifying, setIsVerifying] = useState(true)
+  
+  const [origin, setOrigin] = useState([-36.8485, 174.7633])
+  const [dest, setDest] = useState([-36.8443, 174.7676])
+  const [stops, setStops] = useState([])
+  const [itins, setItins] = useState([])
+  const [banner, setBanner] = useState('')
+  const [selectedStop, setSelectedStop] = useState(null)
+  const [departures, setDepartures] = useState([])
+  const [alerts, setAlerts] = useState([])
+  const [alts, setAlts] = useState({})
+  const [view, setView] = useState('home')
+
+  const [modes, setModes] = useState(['bus','train','walk'])
+  const [optimize, setOptimize] = useState('fastest')
+  const [maxWalkKm, setMaxWalkKm] = useState(1.2)
+  const [avoidStairs, setAvoidStairs] = useState(false)
+  const [bikeOk, setBikeOk] = useState(false)
+  const [whenType, setWhenType] = useState('depart')
+  const [whenValue, setWhenValue] = useState('now')
+
+  const [weather, setWeather] = useState(null)
+  const [safetyContacts, setSafetyContacts] = useState([])
+  const [uiLang, setUiLang] = useState('en')
+  const [currency, setCurrency] = useState('NZD')
+  const [amount, setAmount] = useState(50)
+
+  const [reviews, setReviews] = useState([])
+  const [reviewLoc, setReviewLoc] = useState('')
+  const [reviewRating, setReviewRating] = useState(5)
+  const [reviewComment, setReviewComment] = useState('')
+
+  // Location search states
+  const [originSearch, setOriginSearch] = useState('')
+  const [destSearch, setDestSearch] = useState('')
+  const [originName, setOriginName] = useState('Auckland CBD')
+  const [destName, setDestName] = useState('Auckland Airport')
+  const [searchResults, setSearchResults] = useState([])
+  const [searchingFor, setSearchingFor] = useState(null)
+
+  const text = TRANSLATIONS[uiLang] || TRANSLATIONS.en
+  const convertedAmount = Number((amount * (CURRENCY_RATES[currency] || 1)).toFixed(2))
 
   // Check for existing session on mount and verify with backend
   useEffect(() => {
@@ -747,48 +789,6 @@ export default function App(){
     }
   }, [])
 
-  // ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS
-  const [origin, setOrigin] = useState([-36.8485, 174.7633])
-  const [dest, setDest] = useState([-36.8443, 174.7676])
-  const [stops, setStops] = useState([])
-  const [itins, setItins] = useState([])
-  const [banner, setBanner] = useState('')
-  const [selectedStop, setSelectedStop] = useState(null)
-  const [departures, setDepartures] = useState([])
-  const [alerts, setAlerts] = useState([])
-  const [alts, setAlts] = useState({})
-  const [view, setView] = useState('home')
-
-  const [modes, setModes] = useState(['bus','train','walk'])
-  const [optimize, setOptimize] = useState('fastest')
-  const [maxWalkKm, setMaxWalkKm] = useState(1.2)
-  const [avoidStairs, setAvoidStairs] = useState(false)
-  const [bikeOk, setBikeOk] = useState(false)
-  const [whenType, setWhenType] = useState('depart')
-  const [whenValue, setWhenValue] = useState('now')
-
-  const [weather, setWeather] = useState(null)
-  const [safetyContacts, setSafetyContacts] = useState([])
-  const [uiLang, setUiLang] = useState('en')
-  const [currency, setCurrency] = useState('NZD')
-  const [amount, setAmount] = useState(50)
-
-  const text = TRANSLATIONS[uiLang] || TRANSLATIONS.en
-  const convertedAmount = Number((amount * (CURRENCY_RATES[currency] || 1)).toFixed(2))
-
-  const [reviews, setReviews] = useState([])
-  const [reviewLoc, setReviewLoc] = useState('')
-  const [reviewRating, setReviewRating] = useState(5)
-  const [reviewComment, setReviewComment] = useState('')
-
-  // Location search states
-  const [originSearch, setOriginSearch] = useState('')
-  const [destSearch, setDestSearch] = useState('')
-  const [originName, setOriginName] = useState('Auckland CBD')
-  const [destName, setDestName] = useState('Auckland Airport')
-  const [searchResults, setSearchResults] = useState([])
-  const [searchingFor, setSearchingFor] = useState(null) // 'origin' or 'dest'
-
   // Load initial data once
   useEffect(() => {
     fetch(`${API}/stops/nearby?lat=${origin[0]}&lng=${origin[1]}&radius=900`)
@@ -803,12 +803,16 @@ export default function App(){
       .then(r=>r.json()).then(d=>setReviews(d.reviews||[])).catch(()=>{})
   }, [])
 
-  // Update when origin changes
+  // Update when origin changes (debounced to prevent excessive re-renders)
   useEffect(() => {
-    fetch(`${API}/stops/nearby?lat=${origin[0]}&lng=${origin[1]}&radius=900`)
-      .then(r=>r.json()).then(d=>setStops(d.stops||[])).catch(()=>{})
-    fetch(`${API}/weather/point?lat=${origin[0]}&lng=${origin[1]}`)
-      .then(r=>r.json()).then(d=>setWeather(d.forecast||null)).catch(()=>{})
+    const timeoutId = setTimeout(() => {
+      fetch(`${API}/stops/nearby?lat=${origin[0]}&lng=${origin[1]}&radius=900`)
+        .then(r=>r.json()).then(d=>setStops(d.stops||[])).catch(()=>{})
+      fetch(`${API}/weather/point?lat=${origin[0]}&lng=${origin[1]}`)
+        .then(r=>r.json()).then(d=>setWeather(d.forecast||null)).catch(()=>{})
+    }, 300)
+    
+    return () => clearTimeout(timeoutId)
   }, [origin])
 
   const viewDepartures = async (stop) => {
@@ -841,9 +845,45 @@ export default function App(){
   }
 
   const suggestAlt = async (itinerary) => {
-    const r = await fetch(`${API}/routes/suggest`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ current_itinerary: itinerary, incidents: alerts }) })
-    const data = await r.json()
-    setAlts(prev => ({...prev, [itinerary.id]: data.alternative}))
+    try {
+      const r = await fetch(`${API}/routes/suggest`, { 
+        method:'POST', 
+        headers:{'Content-Type':'application/json'}, 
+        body: JSON.stringify({ 
+          current_itinerary: itinerary, 
+          incidents: alerts,
+          origin: origin,
+          destination: dest,
+          preferences: {
+            optimize: optimize,
+            max_walk_km: maxWalkKm,
+            avoid_stairs: avoidStairs,
+            bike_ok: bikeOk,
+            modes: modes
+          }
+        }) 
+      })
+      const data = await r.json()
+      
+      // Enhance alternative with more details
+      const enhancedAlternative = {
+        ...data.alternative,
+        reason: data.reason || 'Alternative route available',
+        benefits: data.benefits || [],
+        warnings: data.warnings || [],
+        comparison: {
+          timeDiff: data.alternative?.duration ? 
+            Math.round((data.alternative.duration - itinerary.duration) / 60) : 0,
+          transferDiff: (data.alternative?.transfers || 0) - (itinerary.transfers || 0),
+          walkDiff: data.alternative?.walk_distance ? 
+            (data.alternative.walk_distance - (itinerary.walk_distance || 0)).toFixed(1) : 0
+        }
+      }
+      
+      setAlts(prev => ({...prev, [itinerary.id]: enhancedAlternative}))
+    } catch (error) {
+      console.error('Error suggesting alternative:', error)
+    }
   }
 
   const authHeaders = () => token ? {'Authorization': `Bearer ${token}`} : {}
@@ -898,7 +938,7 @@ export default function App(){
     })
   }
 
-  // Geocoding: Search for places by name using Nominatim (OpenStreetMap)
+  // Enhanced Geocoding with more accurate results
   const searchLocation = async (query, type) => {
     if (!query || query.length < 3) {
       setSearchResults([])
@@ -906,11 +946,41 @@ export default function App(){
     }
     
     try {
+      // More specific search parameters for better accuracy
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Auckland, New Zealand')}&limit=5`
+        `https://nominatim.openstreetmap.org/search?` + 
+        `format=json&` +
+        `q=${encodeURIComponent(query)}&` +
+        `countrycodes=nz&` +
+        `bounded=1&` +
+        `viewbox=174.5,-37.0,175.0,-36.5&` + // Auckland bounding box
+        `addressdetails=1&` +
+        `limit=8&` +
+        `dedupe=1`
       )
       const data = await response.json()
-      setSearchResults(data)
+      
+      // Filter and sort results by relevance
+      const filteredResults = data
+        .filter(result => {
+          const name = result.display_name.toLowerCase()
+          return (
+            name.includes('auckland') || 
+            name.includes('new zealand') ||
+            parseFloat(result.lat) > -37.5 && parseFloat(result.lat) < -36.5
+          )
+        })
+        .sort((a, b) => {
+          // Prioritize results with specific types
+          const priorityTypes = ['building', 'amenity', 'shop', 'tourism', 'station']
+          const aHasPriority = priorityTypes.includes(a.type)
+          const bHasPriority = priorityTypes.includes(b.type)
+          if (aHasPriority && !bHasPriority) return -1
+          if (!aHasPriority && bHasPriority) return 1
+          return 0
+        })
+      
+      setSearchResults(filteredResults)
       setSearchingFor(type)
     } catch (error) {
       console.error('Search error:', error)
@@ -1013,11 +1083,11 @@ export default function App(){
   }
 
   return (
-    <div style={{minHeight:'100vh', padding:'0', background:'var(--app-bg)'}}>
+    <div style={{minHeight:'100vh', padding:'0', background:'var(--app-bg)', willChange:'auto'}}>
       {/* Modern Top Navigation Bar */}
       <nav style={{
         position:'sticky', top:0, zIndex:1000,
-        background:'var(--glass-bg)', backdropFilter:'blur(20px)', 
+        background:'rgba(10, 14, 39, 0.95)', 
         borderBottom:'1px solid var(--glass-border)',
         boxShadow:'0 4px 24px rgba(0,0,0,0.1)'
       }}>
@@ -1270,19 +1340,50 @@ export default function App(){
                             marginBottom:6,
                             display:'flex',
                             alignItems:'center',
-                            gap:8
+                            justifyContent:'space-between'
                           }}>
-                            <span style={{fontSize:18}}>📍</span>
-                            {result.display_name.split(',')[0]}
+                            <div style={{display:'flex', alignItems:'center', gap:8}}>
+                              <span style={{fontSize:18}}>
+                                {result.type === 'amenity' ? '🏢' : 
+                                 result.type === 'building' ? '🏛️' :
+                                 result.type === 'tourism' ? '🎯' :
+                                 result.type === 'station' ? '🚉' :
+                                 result.type === 'shop' ? '🏪' : '📍'}
+                              </span>
+                              {result.display_name.split(',')[0]}
+                            </div>
+                            {result.address?.suburb && (
+                              <span style={{
+                                fontSize:11,
+                                padding:'2px 8px',
+                                background:'rgba(139, 92, 246, 0.3)',
+                                borderRadius:8,
+                                color:'rgba(139, 92, 246, 1)',
+                                fontWeight:600
+                              }}>
+                                {result.address.suburb}
+                              </span>
+                            )}
                           </div>
                           <div style={{
-                            fontSize:12, 
-                            color:'rgba(255,255,255,0.6)', 
+                            fontSize:11, 
+                            color:'rgba(255,255,255,0.5)', 
                             lineHeight:1.5,
-                            paddingLeft:26
+                            paddingLeft:26,
+                            marginBottom:4
                           }}>
-                            {result.display_name.split(',').slice(1).join(',').trim()}
+                            {result.display_name.split(',').slice(1, 3).join(',').trim()}
                           </div>
+                          {result.type && (
+                            <div style={{
+                              fontSize:10,
+                              color:'rgba(255,255,255,0.4)',
+                              paddingLeft:26,
+                              fontStyle:'italic'
+                            }}>
+                              {result.type.charAt(0).toUpperCase() + result.type.slice(1)}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1371,19 +1472,50 @@ export default function App(){
                             marginBottom:6,
                             display:'flex',
                             alignItems:'center',
-                            gap:8
+                            justifyContent:'space-between'
                           }}>
-                            <span style={{fontSize:18}}>🎯</span>
-                            {result.display_name.split(',')[0]}
+                            <div style={{display:'flex', alignItems:'center', gap:8}}>
+                              <span style={{fontSize:18}}>
+                                {result.type === 'amenity' ? '🏢' : 
+                                 result.type === 'building' ? '🏛️' :
+                                 result.type === 'tourism' ? '🎯' :
+                                 result.type === 'station' ? '🚉' :
+                                 result.type === 'shop' ? '🏪' : '🎯'}
+                              </span>
+                              {result.display_name.split(',')[0]}
+                            </div>
+                            {result.address?.suburb && (
+                              <span style={{
+                                fontSize:11,
+                                padding:'2px 8px',
+                                background:'rgba(59, 130, 246, 0.3)',
+                                borderRadius:8,
+                                color:'rgba(59, 130, 246, 1)',
+                                fontWeight:600
+                              }}>
+                                {result.address.suburb}
+                              </span>
+                            )}
                           </div>
                           <div style={{
-                            fontSize:12, 
-                            color:'rgba(255,255,255,0.6)', 
+                            fontSize:11, 
+                            color:'rgba(255,255,255,0.5)', 
                             lineHeight:1.5,
-                            paddingLeft:26
+                            paddingLeft:26,
+                            marginBottom:4
                           }}>
-                            {result.display_name.split(',').slice(1).join(',').trim()}
+                            {result.display_name.split(',').slice(1, 3).join(',').trim()}
                           </div>
+                          {result.type && (
+                            <div style={{
+                              fontSize:10,
+                              color:'rgba(255,255,255,0.4)',
+                              paddingLeft:26,
+                              fontStyle:'italic'
+                            }}>
+                              {result.type.charAt(0).toUpperCase() + result.type.slice(1)}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1461,11 +1593,171 @@ export default function App(){
                           </div>
                         </div>
                         {alts[it.id] && (
-                          <div className="alt" style={{marginTop:16}}>
-                            <div style={{fontWeight:600, marginBottom:6}}>✨ Alternative route available</div>
-                            <div style={{color:'var(--muted)', fontSize:14}}>~{alts[it.id].durationMin || '—'} min • {alts[it.id].transfers || 0} transfers</div>
-                            {alts[it.id].note && <div style={{color:'var(--muted)', fontSize:14, marginTop:4}}>{alts[it.id].note}</div>}
-                            {alts[it.id].legs && <div style={{color:'var(--muted)', fontSize:14}}>🚶 {alts[it.id].legs.join(' → ')}</div>}
+                          <div className="alt" style={{
+                            marginTop:16, 
+                            padding:20, 
+                            background:'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(52, 211, 153, 0.05) 100%)',
+                            border:'2px solid rgba(16, 185, 129, 0.3)',
+                            borderRadius:16,
+                            boxShadow:'0 4px 15px rgba(16, 185, 129, 0.15)'
+                          }}>
+                            <div style={{
+                              display:'flex', 
+                              alignItems:'center', 
+                              justifyContent:'space-between',
+                              marginBottom:12
+                            }}>
+                              <div style={{fontWeight:700, fontSize:16, color:'#10b981'}}>
+                                ✨ {alts[it.id].reason}
+                              </div>
+                              {alts[it.id].comparison && (
+                                <div style={{
+                                  display:'flex',
+                                  gap:8,
+                                  alignItems:'center'
+                                }}>
+                                  {alts[it.id].comparison.timeDiff !== 0 && (
+                                    <span style={{
+                                      fontSize:12,
+                                      padding:'4px 10px',
+                                      background: alts[it.id].comparison.timeDiff < 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                                      color: alts[it.id].comparison.timeDiff < 0 ? '#10b981' : '#ef4444',
+                                      borderRadius:8,
+                                      fontWeight:600
+                                    }}>
+                                      {alts[it.id].comparison.timeDiff > 0 ? '+' : ''}{alts[it.id].comparison.timeDiff} min
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div style={{
+                              display:'grid',
+                              gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))',
+                              gap:12,
+                              marginBottom:12
+                            }}>
+                              <div style={{
+                                background:'rgba(255,255,255,0.05)',
+                                padding:12,
+                                borderRadius:12,
+                                border:'1px solid rgba(255,255,255,0.1)'
+                              }}>
+                                <div style={{fontSize:11, opacity:0.6, marginBottom:4}}>Duration</div>
+                                <div style={{fontSize:16, fontWeight:700}}>
+                                  ~{alts[it.id].durationMin || '—'} min
+                                </div>
+                              </div>
+                              
+                              <div style={{
+                                background:'rgba(255,255,255,0.05)',
+                                padding:12,
+                                borderRadius:12,
+                                border:'1px solid rgba(255,255,255,0.1)'
+                              }}>
+                                <div style={{fontSize:11, opacity:0.6, marginBottom:4}}>Transfers</div>
+                                <div style={{fontSize:16, fontWeight:700}}>
+                                  {alts[it.id].transfers || 0}
+                                  {alts[it.id].comparison?.transferDiff !== 0 && (
+                                    <span style={{
+                                      fontSize:11,
+                                      marginLeft:6,
+                                      color: alts[it.id].comparison.transferDiff < 0 ? '#10b981' : '#ef4444'
+                                    }}>
+                                      ({alts[it.id].comparison.transferDiff > 0 ? '+' : ''}{alts[it.id].comparison.transferDiff})
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              {alts[it.id].walk_distance && (
+                                <div style={{
+                                  background:'rgba(255,255,255,0.05)',
+                                  padding:12,
+                                  borderRadius:12,
+                                  border:'1px solid rgba(255,255,255,0.1)'
+                                }}>
+                                  <div style={{fontSize:11, opacity:0.6, marginBottom:4}}>Walking</div>
+                                  <div style={{fontSize:16, fontWeight:700}}>
+                                    {alts[it.id].walk_distance} km
+                                    {alts[it.id].comparison?.walkDiff !== 0 && (
+                                      <span style={{
+                                        fontSize:11,
+                                        marginLeft:6,
+                                        color: alts[it.id].comparison.walkDiff < 0 ? '#10b981' : '#ef4444'
+                                      }}>
+                                        ({alts[it.id].comparison.walkDiff > 0 ? '+' : ''}{alts[it.id].comparison.walkDiff}km)
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {alts[it.id].legs && (
+                              <div style={{
+                                padding:12,
+                                background:'rgba(255,255,255,0.03)',
+                                borderRadius:10,
+                                marginBottom:10
+                              }}>
+                                <div style={{fontSize:11, opacity:0.6, marginBottom:6}}>Route Details</div>
+                                <div style={{fontSize:14, fontWeight:600}}>
+                                  🚶 {alts[it.id].legs.join(' → ')}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {alts[it.id].benefits && alts[it.id].benefits.length > 0 && (
+                              <div style={{marginTop:10}}>
+                                <div style={{fontSize:11, opacity:0.6, marginBottom:6}}>Benefits:</div>
+                                {alts[it.id].benefits.map((benefit, idx) => (
+                                  <div key={idx} style={{
+                                    fontSize:13,
+                                    padding:'6px 10px',
+                                    background:'rgba(16, 185, 129, 0.15)',
+                                    borderLeft:'3px solid #10b981',
+                                    borderRadius:6,
+                                    marginBottom:4
+                                  }}>
+                                    ✓ {benefit}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {alts[it.id].warnings && alts[it.id].warnings.length > 0 && (
+                              <div style={{marginTop:10}}>
+                                <div style={{fontSize:11, opacity:0.6, marginBottom:6}}>Warnings:</div>
+                                {alts[it.id].warnings.map((warning, idx) => (
+                                  <div key={idx} style={{
+                                    fontSize:13,
+                                    padding:'6px 10px',
+                                    background:'rgba(251, 191, 36, 0.15)',
+                                    borderLeft:'3px solid #fbbf24',
+                                    borderRadius:6,
+                                    marginBottom:4
+                                  }}>
+                                    ⚠ {warning}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            
+                            {alts[it.id].note && (
+                              <div style={{
+                                marginTop:10,
+                                padding:10,
+                                background:'rgba(59, 130, 246, 0.1)',
+                                borderLeft:'3px solid #3b82f6',
+                                borderRadius:6,
+                                fontSize:13,
+                                color:'rgba(255,255,255,0.8)'
+                              }}>
+                                ℹ️ {alts[it.id].note}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
