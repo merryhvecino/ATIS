@@ -1,4 +1,5 @@
 import random
+from datetime import datetime, timedelta
 from .db import query_nearby_stops
 
 def nearby_stops(lat: float, lng: float, radius: float = 900):
@@ -56,9 +57,30 @@ def sample_weather(point, raw=False):
     return data if raw else (alert or "")
 
 def sample_traffic(bbox: str):
+    now = datetime.utcnow()
     return [
-        {"id": "INC-1", "type": "Accident", "summary": "Crash southbound SH1 near Esmonde Rd", "severity": "high"},
-        {"id": "INC-2", "type": "Roadworks", "summary": "Lane closure on Fanshawe St", "severity": "low"},
+        {
+            "id": "INC-1",
+            "type": "accident",
+            "summary": "Crash southbound SH1 near Esmonde Rd",
+            "severity": "high",
+            "start_time": (now - timedelta(minutes=15)).isoformat(),
+            "expected_delay_min": 20,
+            "location": "SH1 southbound near Esmonde Rd",
+            "affected_routes": ["NX1", "NX2", "INN"],
+            "advice": "Buses are diverting via Akoranga Dr. Consider transferring to the Northern Express at Akoranga Station."
+        },
+        {
+            "id": "INC-2",
+            "type": "roadworks",
+            "summary": "Lane closure on Fanshawe St",
+            "severity": "moderate",
+            "start_time": (now - timedelta(minutes=5)).isoformat(),
+            "expected_delay_min": 8,
+            "location": "Fanshawe St city-bound",
+            "affected_routes": ["82", "83", "Lower Link"],
+            "advice": "Expect short delays around Wynyard Quarter. Allow an extra 5 minutes or alight one stop earlier."
+        },
     ]
 
 def suggest_reroute(current_itinerary, incidents):
@@ -68,7 +90,47 @@ def suggest_reroute(current_itinerary, incidents):
     return {"note": "Current route ok"}
 
 def sample_alerts():
+    now = datetime.utcnow()
     return [
-        {"type": "weather", "title": "Strong winds from 3–6pm", "severity": "warning"},
-        {"type": "safety", "title": "Major event at Aotea Square — expect delays", "severity": "info"},
+        {
+            "id": "ALERT-1",
+            "type": "weather",
+            "title": "Strong winds forecast this afternoon",
+            "severity": "warning",
+            "start_time": (now + timedelta(hours=1)).isoformat(),
+            "end_time": (now + timedelta(hours=4)).isoformat(),
+            "location": "Harbour Bridge and CBD waterfront",
+            "impact": "Gusts up to 80 km/h may affect double-decker buses and ferry sailings.",
+            "affected_modes": ["bus", "ferry"],
+            "affected_routes": ["NX1", "NX2", "Birkenhead Ferry"],
+            "expected_delay_min": 15,
+            "advice": "Allow extra time and consider rail if travelling during the peak wind window."
+        },
+        {
+            "id": "ALERT-2",
+            "type": "event",
+            "title": "Concert at Spark Arena tonight",
+            "severity": "info",
+            "start_time": (now + timedelta(hours=5)).isoformat(),
+            "end_time": (now + timedelta(hours=9)).isoformat(),
+            "location": "Spark Arena & Quay St",
+            "impact": "Increased crowd volumes and intermittent road closures around Quay St from 6pm.",
+            "affected_modes": ["bus", "car", "rideshare"],
+            "affected_routes": ["TMK", "InnerLink", "Train Eastern Line"],
+            "advice": "Arrive early, use Britomart Station exits 1 or 3, and plan for a 10 minute walk detour after the event."
+        },
+        {
+            "id": "ALERT-3",
+            "type": "service",
+            "title": "Track maintenance on Southern Line (Sat 10pm–Sun 6am)",
+            "severity": "planned",
+            "start_time": (now + timedelta(days=1, hours=10)).isoformat(),
+            "end_time": (now + timedelta(days=2, hours=6)).isoformat(),
+            "location": "Puhinui ⇄ Papakura",
+            "impact": "Rail replacement buses operating every 20 minutes overnight.",
+            "affected_modes": ["train", "replacement bus"],
+            "affected_routes": ["Southern Line", "Rail replacement bus S1"],
+            "expected_delay_min": 25,
+            "advice": "Transfer to bus at Puhinui. Allow an extra 25 minutes for late-night travel."
+        }
     ]

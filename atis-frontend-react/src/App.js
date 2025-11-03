@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Circle, Polyline, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 
@@ -12,6 +12,50 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 })
+
+// Custom map icons for different features
+const mapIcons = {
+  origin: new L.Icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
+  }),
+  destination: new L.Icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
+  }),
+  stop: new L.Icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
+  }),
+  trafficWarning: new L.Icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
+  }),
+  trafficCritical: new L.Icon({
+    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
+  })
+}
 
 const TRANSLATIONS = {
   en: {
@@ -114,6 +158,53 @@ function FeatureCard({title, description, children, icon}){
   )
 }
 
+const ALERT_TYPE_ICONS = {
+  weather: '🌦️',
+  event: '🎟️',
+  safety: '🚨',
+  accident: '🚗',
+  roadworks: '🚧',
+  service: '🛠️',
+  ferry: '⛴️',
+  train: '🚆',
+  bus: '🚌',
+}
+
+const ALERT_SEVERITY_STYLES = {
+  critical: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'Critical' },
+  high: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'High' },
+  warning: { bg: 'rgba(251,191,36,0.18)', color: '#f59e0b', label: 'Warning' },
+  moderate: { bg: 'rgba(249,115,22,0.18)', color: '#f97316', label: 'Moderate' },
+  info: { bg: 'rgba(59,130,246,0.18)', color: '#3b82f6', label: 'Info' },
+  planned: { bg: 'rgba(167,139,250,0.18)', color: '#8b5cf6', label: 'Planned' },
+  low: { bg: 'rgba(16,185,129,0.18)', color: '#10b981', label: 'Low' }
+}
+
+const getAlertIcon = (type = '') => {
+  const key = type.toLowerCase()
+  if (ALERT_TYPE_ICONS[key]) return ALERT_TYPE_ICONS[key]
+  if (key.includes('accident')) return '🚗'
+  if (key.includes('road')) return '🚧'
+  if (key.includes('weather')) return '🌦️'
+  return '⚠️'
+}
+
+const getSeverityAppearance = (severity = '') => {
+  const key = severity.toLowerCase()
+  return ALERT_SEVERITY_STYLES[key] || { bg: 'rgba(148,163,184,0.18)', color: '#475569', label: severity ? severity : 'Info' }
+}
+
+const formatAlertWindow = (start, end) => {
+  if (!start && !end) return ''
+  const opts = { hour: 'numeric', minute: '2-digit' }
+  const startStr = start ? new Date(start).toLocaleTimeString([], opts) : null
+  const endStr = end ? new Date(end).toLocaleTimeString([], opts) : null
+  if (startStr && endStr) return `${startStr} – ${endStr}`
+  if (startStr) return `From ${startStr}`
+  if (endStr) return `Until ${endStr}`
+  return ''
+}
+
 function DraggableMarker({ position, setPosition, label }) {
   const [draggable, setDraggable] = useState(true)
   
@@ -130,11 +221,12 @@ function DraggableMarker({ position, setPosition, label }) {
       draggable={draggable}
       eventHandlers={eventHandlers}
       position={position}
+      icon={mapIcons.origin}
     >
       <Popup minWidth={90}>
         <span onClick={() => setDraggable((d) => !d)}>
           {label}<br/>
-          {draggable ? 'Draggable' : 'Click to make draggable'}
+          <small style={{color:'#666'}}>{draggable ? 'Draggable' : 'Click to make draggable'}</small>
         </span>
       </Popup>
     </Marker>
@@ -152,33 +244,499 @@ function MapClickHandler({ onMapClick }) {
   return null
 }
 
-function InteractiveMap({ origin, setOrigin, dest, setDest, stops }) {
-  const center = origin
+// Component to handle "My Location" button
+function RecenterButton({ position }) {
+  const map = useMap()
+  
+  const recenter = () => {
+    map.flyTo(position, 15, {
+      duration: 1.5
+    })
+  }
   
   return (
+    <button
+      onClick={recenter}
+      style={{
+        position: 'absolute',
+        top: 64,
+        right: 10,
+        zIndex: 1000,
+        padding: '10px 16px',
+        background: 'white',
+        border: '2px solid rgba(0,0,0,0.2)',
+        borderRadius: 8,
+        cursor: 'pointer',
+        fontSize: 14,
+        fontWeight: 600,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        transition: 'all 0.2s',
+        minWidth: 200
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = '#3b82f6'
+        e.currentTarget.style.color = 'white'
+        e.currentTarget.style.transform = 'translateY(-2px)'
+        e.currentTarget.style.boxShadow = '0 4px 16px rgba(59, 130, 246, 0.4)'
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'white'
+        e.currentTarget.style.color = '#333'
+        e.currentTarget.style.transform = 'translateY(0)'
+        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)'
+      }}
+      title="Center map on your origin location"
+    >
+      📍 My Location
+    </button>
+  )
+}
+
+function MapLegend({ trafficCount }) {
+  return (
+    <div style={{
+      position: 'absolute',
+      bottom: 20,
+      right: 20,
+      background: 'rgba(255, 255, 255, 0.95)',
+      padding: '12px 16px',
+      borderRadius: 12,
+      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+      zIndex: 1000,
+      fontSize: 13,
+      backdropFilter: 'blur(10px)',
+      border: '1px solid rgba(0,0,0,0.1)'
+    }}>
+      <div style={{fontWeight:700, marginBottom:10, fontSize:14, color:'#1a1a1a'}}>
+        🗺️ Map Legend
+      </div>
+      <div style={{display:'flex', flexDirection:'column', gap:8}}>
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          <div style={{width:20, height:20, borderRadius:'50%', background:'#28a745'}}></div>
+          <span style={{color:'#333'}}>Origin (drag to move)</span>
+        </div>
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          <div style={{width:20, height:20, borderRadius:'50%', background:'#dc3545'}}></div>
+          <span style={{color:'#333'}}>Destination (click map)</span>
+        </div>
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          <div style={{width:20, height:20, borderRadius:'50%', background:'#007bff'}}></div>
+          <span style={{color:'#333'}}>Transit Stops</span>
+        </div>
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          <div style={{width:20, height:20, borderRadius:'50%', background:'#fd7e14'}}></div>
+          <span style={{color:'#333'}}>Traffic Warning</span>
+        </div>
+        <div style={{display:'flex', alignItems:'center', gap:8}}>
+          <div style={{width:20, height:20, borderRadius:'50%', background:'#6f42c1'}}></div>
+          <span style={{color:'#333'}}>Traffic Critical</span>
+        </div>
+        {trafficCount > 0 && (
+          <div style={{
+            marginTop:8, 
+            paddingTop:8, 
+            borderTop:'1px solid rgba(0,0,0,0.1)',
+            fontSize:12,
+            color:'#666',
+            display:'flex',
+            alignItems:'center',
+            gap:6
+          }}>
+            <span style={{
+              display:'inline-block',
+              width:8,
+              height:8,
+              borderRadius:'50%',
+              background:'#ff4444',
+              animation:'pulse 2s infinite'
+            }}></span>
+            {trafficCount} active traffic incident{trafficCount !== 1 ? 's' : ''}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function InteractiveMap({ origin, setOrigin, dest, setDest, stops, trafficIncidents = [], lastUpdate, onRefresh }) {
+  const [showTraffic, setShowTraffic] = useState(true)
+  const [showRoute, setShowRoute] = useState(true)
+  const [showStops, setShowStops] = useState(true)
+  const [mapStyle, setMapStyle] = useState('standard')
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const center = origin
+  
+  // Calculate route line between origin and destination
+  const routeLine = [origin, dest]
+  
+  // Map tile URLs for different styles
+  const mapTiles = {
+    standard: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    transport: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+  }
+  
+  // Manual refresh handler with animation
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true)
+    await onRefresh()
+    setTimeout(() => setIsRefreshing(false), 1000)
+  }
+  
+  return (
+    <div style={{position:'relative', height:'100%', width:'100%'}}>
+      {/* Real-Time Update Indicator - Top Center */}
+      <div style={{
+        position: 'absolute',
+        top: 10,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 1000,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 4
+      }}>
+        <div style={{
+          padding: '8px 16px',
+          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+          color: 'white',
+          border: '2px solid rgba(255,255,255,0.3)',
+          borderRadius: 20,
+          fontSize: 12,
+          fontWeight: 700,
+          boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          animation: 'pulse 2s ease-in-out infinite'
+        }}>
+          <span style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: '#fff',
+            animation: 'pulse 1.5s ease-in-out infinite',
+            boxShadow: '0 0 8px rgba(255,255,255,0.8)'
+          }}></span>
+          🔴 LIVE UPDATES
+        </div>
+        {lastUpdate && (
+          <div style={{
+            padding: '4px 12px',
+            background: 'rgba(0,0,0,0.7)',
+            color: 'white',
+            borderRadius: 12,
+            fontSize: 10,
+            fontWeight: 600,
+            backdropFilter: 'blur(10px)'
+          }}>
+            Updated {lastUpdate}
+          </div>
+        )}
+      </div>
+
+      {/* Map Controls Panel - Top Left */}
+      <div style={{
+        position: 'absolute',
+        top: 10,
+        left: 10,
+        zIndex: 1000,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8
+      }}>
+        {/* Manual Refresh Button */}
+        <button
+          onClick={handleManualRefresh}
+          disabled={isRefreshing}
+          style={{
+            padding: '10px 16px',
+            background: isRefreshing ? '#10b981' : 'white',
+            color: isRefreshing ? 'white' : '#333',
+            border: '2px solid rgba(0,0,0,0.2)',
+            borderRadius: 8,
+            cursor: isRefreshing ? 'wait' : 'pointer',
+            fontSize: 14,
+            fontWeight: 600,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            transition: 'all 0.3s',
+            opacity: isRefreshing ? 0.8 : 1
+          }}
+          title="Refresh traffic data now"
+        >
+          <span style={{
+            display: 'inline-block',
+            animation: isRefreshing ? 'spin 1s linear infinite' : 'none'
+          }}>
+            🔄
+          </span>
+          {isRefreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
+        
+        <button
+          onClick={() => setShowTraffic(!showTraffic)}
+          style={{
+            padding: '10px 16px',
+            background: showTraffic ? '#3b82f6' : 'white',
+            color: showTraffic ? 'white' : '#333',
+            border: '2px solid rgba(0,0,0,0.2)',
+            borderRadius: 8,
+            cursor: 'pointer',
+            fontSize: 14,
+            fontWeight: 600,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            transition: 'all 0.2s'
+          }}
+          title={showTraffic ? 'Hide traffic incidents' : 'Show traffic incidents'}
+        >
+          🚦 Traffic {showTraffic ? '(On)' : '(Off)'}
+        </button>
+        <button
+          onClick={() => setShowRoute(!showRoute)}
+          style={{
+            padding: '10px 16px',
+            background: showRoute ? '#3b82f6' : 'white',
+            color: showRoute ? 'white' : '#333',
+            border: '2px solid rgba(0,0,0,0.2)',
+            borderRadius: 8,
+            cursor: 'pointer',
+            fontSize: 14,
+            fontWeight: 600,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            transition: 'all 0.2s'
+          }}
+          title={showRoute ? 'Hide route line' : 'Show route line'}
+        >
+          🛣️ Route {showRoute ? '(On)' : '(Off)'}
+        </button>
+        <button
+          onClick={() => setShowStops(!showStops)}
+          style={{
+            padding: '10px 16px',
+            background: showStops ? '#3b82f6' : 'white',
+            color: showStops ? 'white' : '#333',
+            border: '2px solid rgba(0,0,0,0.2)',
+            borderRadius: 8,
+            cursor: 'pointer',
+            fontSize: 14,
+            fontWeight: 600,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            transition: 'all 0.2s'
+          }}
+          title={showStops ? 'Hide transit stops' : 'Show transit stops'}
+        >
+          🚏 Stops {showStops ? '(On)' : '(Off)'}
+        </button>
+      </div>
+      
+      {/* Top Right Control Panel */}
+      <div style={{
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        zIndex: 1000,
+        minWidth: 200
+      }}>
+        {/* Map Style Selector */}
+        <select
+          value={mapStyle}
+          onChange={(e) => setMapStyle(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '10px 16px',
+            background: 'white',
+            color: '#333',
+            border: '2px solid rgba(0,0,0,0.2)',
+            borderRadius: 8,
+            cursor: 'pointer',
+            fontSize: 14,
+            fontWeight: 600,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            outline: 'none',
+            appearance: 'none',
+            WebkitAppearance: 'none',
+            MozAppearance: 'none',
+            backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e")',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'right 12px center',
+            backgroundSize: '16px',
+            paddingRight: '36px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            transition: 'all 0.2s'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = '#3b82f6'
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.3)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = 'rgba(0,0,0,0.2)'
+            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)'
+          }}
+          title="Change map style"
+        >
+          <option value="standard">🗺️ Standard Map</option>
+          <option value="transport">🚌 Transport Map</option>
+          <option value="dark">🌙 Dark Mode</option>
+        </select>
+      </div>
+      
     <MapContainer center={center} zoom={13} style={{height: '100%', width: '100%', borderRadius: 12}}>
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+          url={mapTiles[mapStyle]}
+          key={mapStyle}
+        />
+        
+        {/* Route Line - Blue dashed line between origin and destination */}
+        {showRoute && (
+          <Polyline
+            positions={routeLine}
+            pathOptions={{
+              color: '#3b82f6',
+              weight: 4,
+              opacity: 0.7,
+              dashArray: '10, 10',
+              lineCap: 'round',
+              lineJoin: 'round'
+            }}
+          >
+            <Popup>
+              <strong>📍 Planned Route</strong><br/>
+              <small>From origin to destination</small>
+            </Popup>
+          </Polyline>
+        )}
+        
+        {/* Origin Marker - Green (draggable) */}
       <DraggableMarker position={origin} setPosition={setOrigin} label="Origin (drag me)" />
-      <Marker position={dest}>
-        <Popup>Destination</Popup>
+        
+        {/* My Location Button */}
+        <RecenterButton position={origin} />
+        
+        {/* Destination Marker - Red */}
+        <Marker position={dest} icon={mapIcons.destination}>
+          <Popup>
+            <strong>🎯 Destination</strong><br/>
+            <small>{dest[0].toFixed(5)}, {dest[1].toFixed(5)}</small>
+          </Popup>
       </Marker>
-      {stops.slice(0, 10).map((stop) => (
-        <Marker key={stop.stop_id} position={[stop.lat, stop.lng]} icon={new L.Icon({
-          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-          shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-          iconSize: [25, 41],
-          iconAnchor: [12, 41],
-          popupAnchor: [1, -34],
-          shadowSize: [41, 41]
-        })}>
-          <Popup><strong>{stop.name}</strong><br/>{stop.distance_m}m away</Popup>
+        
+        {/* Transit Stops - Blue (conditionally shown) */}
+        {showStops && stops.slice(0, 10).map((stop) => (
+          <Marker 
+            key={stop.stop_id} 
+            position={[stop.lat, stop.lng]} 
+            icon={mapIcons.stop}
+          >
+            <Popup>
+              <strong>🚏 {stop.name}</strong><br/>
+              <small>📏 {stop.distance_m}m away</small>
+            </Popup>
         </Marker>
       ))}
+        
+        {/* Traffic Incidents - Orange/Violet (conditionally shown) */}
+        {showTraffic && trafficIncidents
+          .filter(incident => {
+            // Only show incidents with valid coordinates
+            const hasCoords = incident.location?.coordinates || 
+                            (incident.lat != null && incident.lng != null)
+            return hasCoords
+          })
+          .map((incident, idx) => {
+          // Determine severity and icon
+          const isCritical = incident.severity === 'critical' || 
+                           incident.severity === 'major' ||
+                           incident.type === 'accident' ||
+                           incident.type === 'closure'
+          const icon = isCritical ? mapIcons.trafficCritical : mapIcons.trafficWarning
+          
+          // Get position - guaranteed to be valid now
+          const position = incident.location?.coordinates || [incident.lat, incident.lng]
+          
+          // Validate position is an array with 2 numbers
+          if (!Array.isArray(position) || position.length !== 2 || 
+              typeof position[0] !== 'number' || typeof position[1] !== 'number') {
+            console.warn('Invalid traffic incident position:', incident)
+            return null
+          }
+          
+          // Format time
+          const timeStr = incident.start_time ? new Date(incident.start_time).toLocaleTimeString() : 'Now'
+          
+          return (
+            <div key={`traffic-${idx}`}>
+              <Marker position={position} icon={icon}>
+                <Popup maxWidth={250}>
+                  <div style={{padding:'4px 0'}}>
+                    <strong style={{
+                      color: isCritical ? '#6f42c1' : '#fd7e14',
+                      fontSize:14
+                    }}>
+                      {isCritical ? '🚨' : '⚠️'} {incident.title || incident.type || 'Traffic Incident'}
+                    </strong>
+                    <div style={{marginTop:8, fontSize:13, lineHeight:1.5}}>
+                      {incident.description || incident.summary || 'Traffic disruption reported'}
+                    </div>
+                    <div style={{
+                      marginTop:8, 
+                      paddingTop:8, 
+                      borderTop:'1px solid #eee',
+                      fontSize:11,
+                      color:'#666'
+                    }}>
+                      <div><strong>Severity:</strong> {incident.severity || 'moderate'}</div>
+                      {incident.affected_routes && (
+                        <div><strong>Routes:</strong> {incident.affected_routes}</div>
+                      )}
+                      <div><strong>Time:</strong> {timeStr}</div>
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
+              
+              {/* Add radius circle for critical incidents */}
+              {isCritical && (
+                <Circle
+                  center={position}
+                  radius={500}
+                  pathOptions={{
+                    color: '#6f42c1',
+                    fillColor: '#6f42c1',
+                    fillOpacity: 0.1,
+                    weight: 2,
+                    dashArray: '5, 5'
+                  }}
+                />
+              )}
+            </div>
+          )
+        }).filter(Boolean)}
+        
       <MapClickHandler onMapClick={setDest} />
     </MapContainer>
+      
+      {/* Add the legend */}
+      <MapLegend trafficCount={showTraffic ? trafficIncidents.length : 0} />
+    </div>
   )
 }
 
@@ -534,7 +1092,7 @@ function LoginPage({onLogin, isVerifying}){
   }
 
   return (
-    <div style={{minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20, position:'relative', overflow:'hidden'}}>
+    <div style={{minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20, position:'relative', overflow:'hidden', background:'#0a0e27'}}>
       {/* Animated background gradient circles */}
       <div style={{position:'absolute', top:'-10%', left:'-5%', width:'500px', height:'500px', background:'radial-gradient(circle, rgba(102, 126, 234, 0.3) 0%, transparent 70%)', filter:'blur(80px)', animation:'float 8s ease-in-out infinite'}}></div>
       <div style={{position:'absolute', bottom:'-10%', right:'-5%', width:'500px', height:'500px', background:'radial-gradient(circle, rgba(139, 92, 246, 0.3) 0%, transparent 70%)', filter:'blur(80px)', animation:'float 10s ease-in-out infinite reverse'}}></div>
@@ -699,6 +1257,8 @@ export default function App(){
   const [selectedStop, setSelectedStop] = useState(null)
   const [departures, setDepartures] = useState([])
   const [alerts, setAlerts] = useState([])
+  const [trafficIncidents, setTrafficIncidents] = useState([])
+  const [lastTrafficUpdate, setLastTrafficUpdate] = useState(null)
   const [alts, setAlts] = useState({})
   const [view, setView] = useState('home')
   const [expandedItin, setExpandedItin] = useState(null)
@@ -783,19 +1343,33 @@ export default function App(){
           setToken(null)
           setUsername(null)
           setIsAuthenticated(false)
-        }
-        
+      }
+      
         // Set verification complete AFTER authentication state is finalized
-        if (mounted) {
+      if (mounted) {
           // Use setTimeout to ensure state updates are batched
-          setTimeout(() => setIsVerifying(false), 0)
+          setTimeout(() => {
+            console.log('[ATIS] Verification complete, ready to show content')
+        setIsVerifying(false)
+            // Tell the page React is ready - show content NOW
+            if (window.__atisReady) {
+              window.__atisReady()
+            }
+          }, 100)  // Small delay to ensure DOM is painted
         }
       } else {
         // No saved token, set both states
         if (mounted) {
+          console.log('[ATIS] No token found, showing login')
           setIsAuthenticated(false)
           // Use setTimeout to ensure state updates are batched
-          setTimeout(() => setIsVerifying(false), 0)
+          setTimeout(() => {
+            setIsVerifying(false)
+            // Tell the page React is ready - show content NOW
+            if (window.__atisReady) {
+              window.__atisReady()
+            }
+          }, 100)  // Small delay to ensure DOM is painted
         }
       }
     }
@@ -815,7 +1389,11 @@ export default function App(){
     fetch(`${API}/stops/nearby?lat=${origin[0]}&lng=${origin[1]}&radius=900`)
       .then(r=>r.json()).then(d=>setStops(d.stops||[])).catch(()=>{})
     fetch(`${API}/alerts`)
-      .then(r=>r.json()).then(d=> setAlerts([...(d.alerts||[]), ...(d.traffic||[])])).catch(()=>{})
+      .then(r=>r.json()).then(d=> {
+        setAlerts([...(d.alerts||[]), ...(d.traffic||[])])
+        setTrafficIncidents(d.traffic||[])
+        setLastTrafficUpdate(Date.now())
+      }).catch(()=>{})
     fetch(`${API}/weather/point?lat=${origin[0]}&lng=${origin[1]}`)
       .then(r=>r.json()).then(d=>setWeather(d.forecast||null)).catch(()=>{})
     fetch(`${API}/safety/contacts`)
@@ -838,6 +1416,65 @@ export default function App(){
     
     return () => clearTimeout(timeoutId)
   }, [origin[0], origin[1], isAuthenticated])
+
+  // Helper function to get relative time string
+  const getRelativeTime = (timestamp) => {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000)
+    if (seconds < 10) return 'just now'
+    if (seconds < 60) return `${seconds}s ago`
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    return `${hours}h ago`
+  }
+
+  // Manual refresh function that can be called from the map
+  const refreshTrafficData = async () => {
+    try {
+      const r = await fetch(`${API}/alerts`)
+      const d = await r.json()
+      setAlerts([...(d.alerts||[]), ...(d.traffic||[])])
+      setTrafficIncidents(d.traffic||[])
+      const now = Date.now()
+      setLastTrafficUpdate(now)
+      toast('🔄 Traffic data updated!', 'success')
+      return true
+    } catch(err) {
+      console.error('Failed to refresh traffic:', err)
+      toast('⚠️ Failed to update traffic data', 'error')
+      return false
+    }
+  }
+
+  // Auto-refresh traffic data every 30 seconds for real-time updates
+  useEffect(() => {
+    if (!isAuthenticated) return
+    
+    const refreshTraffic = () => {
+      fetch(`${API}/alerts`)
+        .then(r=>r.json())
+        .then(d=> {
+          setAlerts([...(d.alerts||[]), ...(d.traffic||[])])
+          setTrafficIncidents(d.traffic||[])
+          const now = Date.now()
+          setLastTrafficUpdate(now)
+        })
+        .catch(()=>{})
+    }
+    
+    // Set up interval for auto-refresh (30 seconds)
+    const intervalId = setInterval(refreshTraffic, 30000)
+    
+    // Clean up interval on unmount
+    return () => clearInterval(intervalId)
+  }, [isAuthenticated])
+  
+  // Update relative time display every 10 seconds
+  const [, forceUpdate] = useState()
+  useEffect(() => {
+    const timer = setInterval(() => forceUpdate({}), 10000)
+    return () => clearInterval(timer)
+  }, [])
 
   const viewDepartures = async (stop) => {
     setSelectedStop(stop)
@@ -1174,7 +1811,7 @@ export default function App(){
   }
 
   return (
-    <div style={{minHeight:'100vh', padding:'0', background:'var(--app-bg)', willChange:'auto'}}>
+    <div style={{minHeight:'100vh', padding:'0', background:'#0a0e27', willChange:'auto'}}>
       {/* Modern Top Navigation Bar */}
       <nav style={{
         position:'sticky', top:0, zIndex:1000,
@@ -1299,7 +1936,16 @@ export default function App(){
             <h2 className="section-title">🌍 Interactive Map</h2>
           <FeatureCard icon="🗺️" title="Map View" description="Drag origin marker, click map to set destination, view nearby stops">
             <div style={{height:450, width:'100%', borderRadius:16, overflow:'hidden', boxShadow:'0 8px 24px rgba(0,0,0,0.12)'}}>
-              <InteractiveMap origin={origin} setOrigin={setOrigin} dest={dest} setDest={setDest} stops={stops} />
+              <InteractiveMap 
+                origin={origin} 
+                setOrigin={setOrigin} 
+                dest={dest} 
+                setDest={setDest} 
+                stops={stops} 
+                trafficIncidents={trafficIncidents}
+                lastUpdate={lastTrafficUpdate ? getRelativeTime(lastTrafficUpdate) : null}
+                onRefresh={refreshTrafficData}
+              />
             </div>
             <div style={{marginTop:16, display:'flex', gap:10, flexWrap:'wrap'}}>
               <button className="btn btn-primary" onClick={shareLocation}>📍 {text.shareLocation}</button>
@@ -1326,13 +1972,115 @@ export default function App(){
                 )}
               </div>
               <div style={{flex:'2 1 320px'}}>
-                <div style={{fontWeight:600, marginBottom:6}}>{text.alertsIncidents}</div>
-                <ul style={{margin:0, paddingLeft:18}}>
-                  {alerts.slice(0,6).map((a,i)=>(
-                    <li key={i}><strong>{a.type||a.id}</strong>: {a.title||a.summary} {a.severity?`• ${a.severity}`:''}</li>
-                  ))}
-                  {alerts.length===0 && <li style={{opacity:0.7}}>{text.noAlerts}</li>}
-                </ul>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6}}>
+                  <div style={{fontWeight:600}}>{text.alertsIncidents}</div>
+                  {lastTrafficUpdate && (
+                    <span style={{fontSize:11, color:'rgba(100,116,139,0.9)', background:'rgba(148,163,184,0.12)', padding:'4px 8px', borderRadius:999}}>
+                      Updated {getRelativeTime(lastTrafficUpdate)}
+                    </span>
+                  )}
+                </div>
+                {alerts.length === 0 ? (
+                  <div style={{opacity:0.7, fontSize:13}}>{text.noAlerts}</div>
+                ) : (
+                  <div style={{display:'flex', flexDirection:'column', gap:12}}>
+                    {alerts.slice(0,6).map((a,i) => {
+                      const key = a.id || `alert-${i}`
+                      const icon = getAlertIcon(a.type || a.category || a.source)
+                      const severityInfo = getSeverityAppearance(a.severity || 'info')
+                      const headline = a.title || a.summary || 'Service alert'
+                      const sublineParts = []
+                      if (a.type) sublineParts.push(`${a.type}`)
+                      if (a.location) sublineParts.push(a.location)
+                      const subline = sublineParts.join(' • ')
+                      const timeWindow = formatAlertWindow(a.start_time, a.end_time)
+                      const chips = [
+                        timeWindow ? `⏱️ ${timeWindow}` : null,
+                        a.expected_delay_min ? `⏳ ~${a.expected_delay_min} min delay` : null,
+                        Array.isArray(a.affected_routes) && a.affected_routes.length ? `🚌 Routes: ${a.affected_routes.slice(0,4).join(', ')}` : null,
+                        Array.isArray(a.affected_modes) && a.affected_modes.length ? `🚈 Modes: ${a.affected_modes.join(', ')}` : null,
+                      ].filter(Boolean)
+                      return (
+                        <div
+                          key={key}
+                          style={{
+                            background:'linear-gradient(135deg, rgba(15,23,42,0.05) 0%, rgba(15,23,42,0.08) 100%)',
+                            border:'1px solid rgba(148,163,184,0.24)',
+                            borderRadius:12,
+                            padding:'12px 14px',
+                            boxShadow:'0 6px 18px rgba(15,23,42,0.12)',
+                            backdropFilter:'blur(6px)'
+                          }}
+                        >
+                          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12}}>
+                            <div style={{display:'flex', gap:12}}>
+                              <div style={{fontSize:24, filter:'drop-shadow(0 4px 6px rgba(15,23,42,0.12))'}}>{icon}</div>
+                              <div>
+                                <div style={{fontWeight:700, fontSize:15}}>{headline}</div>
+                                {subline && (
+                                  <div style={{fontSize:12, color:'rgba(100,116,139,0.9)', textTransform:'capitalize'}}>
+                                    {subline}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div style={{
+                              background: severityInfo.bg,
+                              color: severityInfo.color,
+                              border:`1px solid ${severityInfo.color}33`,
+                              padding:'4px 10px',
+                              borderRadius:999,
+                              fontSize:11,
+                              fontWeight:700,
+                              textTransform:'uppercase'
+                            }}>
+                              {(severityInfo.label || (a.severity || 'Info')).toString()
+                                .replace(/_/g,' ')}
+                            </div>
+                          </div>
+                          {(a.impact || a.description || a.summary) && (
+                            <div style={{marginTop:8, fontSize:13, color:'rgba(15,23,42,0.82)', lineHeight:1.5}}>
+                              {a.impact || a.description || a.summary}
+                            </div>
+                          )}
+                          {chips.length > 0 && (
+                            <div style={{marginTop:10, display:'flex', gap:8, flexWrap:'wrap'}}>
+                              {chips.map((chip, idx) => (
+                                <span
+                                  key={`${key}-chip-${idx}`}
+                                  style={{
+                                    background:'rgba(255,255,255,0.6)',
+                                    border:'1px solid rgba(148,163,184,0.25)',
+                                    borderRadius:999,
+                                    padding:'4px 10px',
+                                    fontSize:11,
+                                    fontWeight:600,
+                                    color:'rgba(71,85,105,0.95)'
+                                  }}
+                                >
+                                  {chip}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {a.advice && (
+                            <div style={{
+                              marginTop:10,
+                              padding:'10px 12px',
+                              background:'rgba(59,130,246,0.12)',
+                              borderRadius:10,
+                              border:'1px solid rgba(59,130,246,0.25)',
+                              fontSize:12,
+                              color:'rgba(37,99,235,0.95)'
+                            }}>
+                              <strong>Traveler tip:</strong> {a.advice}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
               {banner && (
                 <div style={{flexBasis:'100%', background:'rgba(37,99,235,0.12)', padding:12, borderRadius:12}}>

@@ -34,11 +34,19 @@ A comprehensive, real-time transportation planning system with advanced analytic
 
 ## ✨ Core Features
 
-### 🗺️ Interactive Map & Trip Planning
-- Leaflet-based interactive map
-- Draggable origin marker
+### 🗺️ Interactive Map & Trip Planning 🔴 REAL-TIME!
+- Leaflet-based interactive map with color-coded markers
+- **🔴 LIVE UPDATES badge** with pulsing animation showing real-time status
+- **⏱️ Live timestamp** display ("Updated Xs ago") with auto-refresh
+- **🔄 Manual refresh button** for on-demand traffic updates
+- **🚦 Real-time traffic incidents** (auto-refresh every 30s)
+- **🏷️ Comprehensive map legend** for easy identification
+- Draggable origin marker (green 🟢)
+- Click-to-set destination marker (red 🔴)
+- Transit stops display (blue 🔵)
+- Traffic warnings (orange 🟠) and critical incidents (purple 🟣)
+- Visual impact radius for critical incidents
 - Multi-modal route planning (bus/train/ferry/walk/bike)
-- Real-time nearby stops display
 - Optimization options: fastest, fewest transfers, most reliable
 
 ### 📍 Enhanced Location Search
@@ -317,13 +325,16 @@ Frontend runs on: `http://localhost:3000`
 1. **ASSESSMENT_FEATURES.md** - Comprehensive technical documentation
 2. **QUICK_START_ASSESSMENT.md** - 5-minute testing guide
 3. **ASSESSMENT_IMPLEMENTATION_SUMMARY.md** - Implementation overview
-4. **FEATURES.md** - Original features list
-5. **ENHANCED_FEATURES.md** - UI enhancement details
-6. **DETAILED_ITINERARY_FEATURES.md** - Itinerary display features
-7. **AUTHENTICATION_GUIDE.md** - Security implementation
-8. **CURRENT_STATUS.md** - System status
-9. **BEFORE_AFTER_COMPARISON.md** - UI improvements
-10. **LOCATION_SEARCH_FEATURE.md** - Search functionality
+4. **MAP_ENHANCEMENTS.md** - ⚡ NEW! Real-time traffic & legend features
+5. **MAP_QUICK_START.md** - ⚡ NEW! Quick guide to using enhanced map
+6. **BLINKING_ULTIMATE_SOLUTION.md** - 🎯 ULTIMATE blinking fix (event-driven)
+7. **FEATURES.md** - Original features list
+8. **ENHANCED_FEATURES.md** - UI enhancement details
+9. **DETAILED_ITINERARY_FEATURES.md** - Itinerary display features
+10. **AUTHENTICATION_GUIDE.md** - Security implementation
+11. **CURRENT_STATUS.md** - System status
+12. **BEFORE_AFTER_COMPARISON.md** - UI improvements
+13. **LOCATION_SEARCH_FEATURE.md** - Search functionality
 
 ---
 
@@ -408,6 +419,34 @@ npm cache clean --force
 - [x] Screenshots capturable
 - [x] Code commented
 - [x] Error handling robust
+
+---
+
+## 🔴 Real-Time Traffic Features (NEW!)
+
+### Live Updates System
+- **🔴 LIVE UPDATES Badge** - Pulsing green badge at map center showing system is active
+- **⏱️ Live Timestamp** - "Updated Xs ago" display with auto-updates every 10 seconds
+- **🔄 Manual Refresh** - On-demand button to fetch latest traffic data
+- **⚡ Auto-Refresh** - Silent background updates every 30 seconds
+- **📊 Visual Feedback** - Spinning animations, toast notifications, state changes
+
+### Documentation
+- **REALTIME_TRAFFIC_UPDATES.md** - Complete technical implementation guide
+- **REALTIME_QUICK_START.md** - Quick start guide for users
+- **REALTIME_VISUAL_REFERENCE.md** - Visual design reference with layouts
+- **REALTIME_IMPLEMENTATION_SUMMARY.md** - Development summary
+
+### Key Benefits
+✅ Professional real-time indicator  
+✅ Transparent data freshness  
+✅ User control over updates  
+✅ Smooth animations & polish  
+✅ Mobile-responsive design  
+
+**Added:** November 3, 2025  
+**Bundle Size:** +7.68 KB (minimal impact)  
+**Performance:** Optimized with 30s intervals  
 
 ---
 

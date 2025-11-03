@@ -6,38 +6,28 @@
   <title>ATIS - Advanced Traveler Information System</title>
   <link rel="icon" href="/atis-logo.jpg" type="image/jpeg">
   <script>
-    // CRITICAL: Prevent ALL transitions and animations during initial load
-    // Apply to both html and body immediately
-    document.documentElement.classList.add('no-transitions');
-    document.body && document.body.classList.add('no-transitions');
+    // NUCLEAR OPTION: Hide everything until React says it's ready
+    console.log('[ATIS] Page loading started...');
     
-    // Function to remove no-transitions class
-    function enableTransitions() {
-      document.documentElement.classList.remove('no-transitions');
-      document.body && document.body.classList.remove('no-transitions');
-    }
+    // Mark page as loading
+    document.documentElement.classList.add('atis-loading');
     
-    // Remove after React has had time to render
-    // Using both events to ensure it works in all scenarios
-    var transitionsEnabled = false;
+    // React will call this when it's truly ready
+    window.__atisReady = function() {
+      console.log('[ATIS] React is ready, showing content now...');
+      // Remove loading class immediately
+      document.documentElement.classList.remove('atis-loading');
+      document.documentElement.classList.add('atis-loaded');
+      console.log('[ATIS] Content visible!');
+    };
     
-    document.addEventListener('DOMContentLoaded', function() {
-      if (!transitionsEnabled) {
-        setTimeout(function() {
-          enableTransitions();
-          transitionsEnabled = true;
-        }, 1200);  // 1.2 seconds to ensure React completes verification
+    // Fallback: Show content after 3 seconds if React doesn't call
+      setTimeout(function() {
+      if (document.documentElement.classList.contains('atis-loading')) {
+        console.warn('[ATIS] Fallback: Showing content after timeout');
+        window.__atisReady();
       }
-    });
-    
-    window.addEventListener('load', function() {
-      if (!transitionsEnabled) {
-        setTimeout(function() {
-          enableTransitions();
-          transitionsEnabled = true;
-        }, 1200);
-      }
-    });
+    }, 3000);
   </script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
@@ -73,61 +63,105 @@
       padding:0;
     }
     
-    /* Prevent flash of unstyled content */
+    /* NUCLEAR OPTION: Hide everything until React is ready */
     html {
-      background: #0a0e27;
+      background: #0a0e27 !important;
+      margin: 0;
+      padding: 0;
     }
     
-    body{
+    body {
       font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-      background: var(--app-bg);
+      background: #0a0e27 !important;
       color: var(--ink);
-      margin:0;
-      line-height:1.7;
-      min-height:100vh;
+      margin: 0;
+      padding: 0;
+      line-height: 1.7;
+      min-height: 100vh;
       overflow-x: hidden;
-      /* Prevent visual jumps */
-      transform: translateZ(0);
-      backface-visibility: hidden;
-      perspective: 1000px;
     }
     
     #root {
       min-height: 100vh;
-      /* Force GPU acceleration for smooth rendering */
-      transform: translate3d(0,0,0);
-      /* Prevent flash of unstyled content */
-      opacity: 1;
-      transition: opacity 0.15s ease-in;
+      background: #0a0e27 !important;
     }
     
-    /* Hide root until React is ready */
-    #root:empty {
-      opacity: 0;
+    /* CRITICAL: Hide #root during loading - show loading screen instead */
+    html.atis-loading #root {
+      visibility: hidden !important;
+      opacity: 0 !important;
+      position: absolute !important;
+      pointer-events: none !important;
     }
     
-    /* Prevent transitions on page load - CRITICAL FOR NO BLINKING */
-    .no-transitions,
-    .no-transitions *,
-    .no-transitions *::before,
-    .no-transitions *::after {
-      transition: none !important;
-      animation: none !important;
-      animation-duration: 0s !important;
-      animation-delay: 0s !important;
-    }
-    
-    /* Prevent layout shift during load */
-    body.no-transitions {
+    /* Show #root when loaded */
+    html.atis-loaded #root {
       visibility: visible !important;
+      opacity: 1 !important;
+      position: relative !important;
+      pointer-events: auto !important;
+      animation: fadeIn 0.3s ease-in;
     }
     
-    /* Spinner animation for loading screen */
+    /* Pure CSS loading screen - visible ONLY during loading */
+    html.atis-loading::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #0a0e27;
+      z-index: 999999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    html.atis-loading::after {
+      content: '';
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60px;
+      height: 60px;
+      border: 4px solid rgba(139, 92, 246, 0.3);
+      border-top: 4px solid #8b5cf6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      z-index: 9999999;
+    }
+    
+    /* Hide loading screen when loaded */
+    html.atis-loaded::before,
+    html.atis-loaded::after {
+      display: none !important;
+    }
+    
+    /* Animations */
     @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+      0% { transform: translate(-50%, -50%) rotate(0deg); }
+      100% { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    /* Pulse animation for traffic indicators */
+    @keyframes pulse {
+      0%, 100% { 
+        opacity: 1; 
+        transform: scale(1); 
+      }
+      50% { 
+        opacity: 0.5; 
+        transform: scale(1.2); 
+      }
     }
     
     .logo{
@@ -361,13 +395,8 @@
     }
   </style>
 </head>
-<body class="no-transitions">
+<body style="background:#0a0e27;margin:0;padding:0;min-height:100vh;">
   <div id="root"></div>
-  <script>
-    // Remove no-transitions class after React loads
-    setTimeout(function() {
-      document.body.classList.remove('no-transitions');
-    }, 500);
-  </script>
+  <!-- React will call window.__atisReady() when ready to show content -->
 </body>
 </html>
