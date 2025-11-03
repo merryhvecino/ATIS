@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Response, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict
 import time, io, os, json
 
 from .pdf import itinerary_pdf
@@ -9,6 +9,10 @@ from .providers import Providers
 from .store import (nearby_stops, sample_departures, sample_itineraries,
                     sample_weather, sample_traffic, suggest_reroute, sample_alerts)
 from .auth import register_user, verify_user, issue_token, decode_token
+from .environmental import (calculate_itinerary_emissions, compare_modal_emissions, 
+                            calculate_cumulative_impact)
+from .mcda import MCDAScorer, create_comparison_chart_data, customize_weights_for_profile
+from .analytics import get_analytics
 
 app = FastAPI(title="ATIS Demo API", version="0.8.0")
 
@@ -95,7 +99,7 @@ class PlanRequest(BaseModel):
     modes: Optional[List[Literal["bus","train","ferry","walk","bike"]]] = ["bus","train","walk"]
 
 @app.post("/plan")
-def plan(req: PlanRequest):
+def plan(req: PlanRequest, user: Optional[str] = None):
     itins = sample_itineraries(
         req.origin, req.destination,
         prefers_fewer_transfers=(req.optimize=="fewest_transfers"),
@@ -105,7 +109,20 @@ def plan(req: PlanRequest):
         bike_ok=req.bike_ok,
         modes=req.modes
     )
-    return {"itineraries": itins, "context": {"weatherAlert": sample_weather(req.origin)}}
+    
+    # Add environmental calculations
+    for itin in itins:
+        itin['environmental'] = calculate_itinerary_emissions(itin)
+    
+    # Add MCDA scoring
+    mcda = MCDAScorer()
+    scored_itins = mcda.score_all_itineraries(itins)
+    
+    return {
+        "itineraries": scored_itins, 
+        "context": {"weatherAlert": sample_weather(req.origin)},
+        "mcda_chart_data": create_comparison_chart_data(scored_itins)
+    }
 
 class RerouteRequest(BaseModel):
     current_itinerary: dict
@@ -236,6 +253,127 @@ def save_prefs(p: Prefs, user: str = Depends(require_auth)):
     with open(PREFS_PATH, "w", encoding="utf-8") as f:
         f.write(json.dumps(data, indent=2))
     return {"ok": True}
+
+# ---------- Environmental Analysis ----------
+@app.post("/environmental/compare")
+def environmental_compare(req: PlanRequest):
+    """Compare environmental impact of different routes"""
+    itins = sample_itineraries(
+        req.origin, req.destination,
+        prefers_fewer_transfers=(req.optimize=="fewest_transfers"),
+        optimize=req.optimize,
+        max_walk_km=req.max_walk_km,
+        avoid_stairs=req.avoid_stairs,
+        bike_ok=req.bike_ok,
+        modes=req.modes
+    )
+    
+    # Add environmental data to each itinerary
+    for itin in itins:
+        itin['environmental'] = calculate_itinerary_emissions(itin)
+    
+    comparison = compare_modal_emissions(itins)
+    return comparison
+
+@app.get("/environmental/impact")
+def environmental_impact():
+    """Get cumulative environmental impact from analytics"""
+    analytics = get_analytics()
+    return analytics.get_environmental_impact()
+
+# ---------- MCDA (Multi-Criteria Decision Analysis) ----------
+class MCDARequest(BaseModel):
+    itineraries: List[dict]
+    weights: Optional[Dict[str, float]] = None
+    profile: Optional[str] = None  # 'commuter', 'budget', 'eco', etc.
+
+@app.post("/mcda/score")
+def mcda_score(req: MCDARequest):
+    """Score itineraries using MCDA with custom weights"""
+    weights = req.weights
+    
+    # Use profile if provided
+    if req.profile and not weights:
+        weights = customize_weights_for_profile(req.profile)
+    
+    mcda = MCDAScorer(weights=weights)
+    scored = mcda.score_all_itineraries(req.itineraries)
+    
+    return {
+        "scored_itineraries": scored,
+        "chart_data": create_comparison_chart_data(scored),
+        "weights_used": mcda.weights
+    }
+
+@app.get("/mcda/profiles")
+def mcda_profiles():
+    """Get available MCDA weight profiles"""
+    return {
+        "profiles": {
+            "commuter": customize_weights_for_profile("commuter"),
+            "budget": customize_weights_for_profile("budget"),
+            "eco": customize_weights_for_profile("eco"),
+            "comfort": customize_weights_for_profile("comfort"),
+            "reliable": customize_weights_for_profile("reliable"),
+            "balanced": customize_weights_for_profile("balanced")
+        },
+        "criteria": {
+            "time": "Trip duration and speed",
+            "cost": "Estimated fare",
+            "comfort": "Transfers and walking distance",
+            "reliability": "On-time performance",
+            "environmental": "CO2 emissions"
+        }
+    }
+
+# ---------- Analytics Dashboard ----------
+@app.post("/analytics/track/trip")
+def analytics_track_trip(
+    origin: List[float],
+    destination: List[float],
+    itinerary: dict,
+    user: str = Depends(require_auth)
+):
+    """Track a planned trip for analytics"""
+    analytics = get_analytics()
+    analytics.track_trip_planned(user, origin, destination, itinerary)
+    return {"ok": True}
+
+@app.get("/analytics/summary")
+def analytics_summary(user: str = Depends(require_auth)):
+    """Get summary analytics"""
+    analytics = get_analytics()
+    return analytics.get_summary_stats()
+
+@app.get("/analytics/routes/popular")
+def analytics_popular_routes(limit: int = 10, user: str = Depends(require_auth)):
+    """Get most popular routes"""
+    analytics = get_analytics()
+    return {"popular_routes": analytics.get_popular_routes(limit)}
+
+@app.get("/analytics/usage/heatmap")
+def analytics_usage_heatmap(user: str = Depends(require_auth)):
+    """Get usage heatmap by hour and day"""
+    analytics = get_analytics()
+    return {"heatmap": analytics.get_hourly_usage_heatmap()}
+
+@app.get("/analytics/modes")
+def analytics_modes(user: str = Depends(require_auth)):
+    """Get transport mode usage statistics"""
+    analytics = get_analytics()
+    return analytics.get_mode_popularity()
+
+@app.get("/analytics/leaderboard")
+def analytics_leaderboard(metric: str = "trips", limit: int = 10, user: str = Depends(require_auth)):
+    """Get user leaderboard by metric"""
+    analytics = get_analytics()
+    return {"leaderboard": analytics.get_user_leaderboard(metric, limit)}
+
+@app.get("/analytics/performance")
+def analytics_performance(user: str = Depends(require_auth)):
+    """Get system performance metrics"""
+    analytics = get_analytics()
+    return analytics.get_performance_metrics()
 
 # ---------- PDF ----------
 class ExportRequest(BaseModel):

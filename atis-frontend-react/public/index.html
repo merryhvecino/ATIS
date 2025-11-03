@@ -6,12 +6,37 @@
   <title>ATIS - Advanced Traveler Information System</title>
   <link rel="icon" href="/atis-logo.jpg" type="image/jpeg">
   <script>
-    // Prevent transitions on page load
+    // CRITICAL: Prevent ALL transitions and animations during initial load
+    // Apply to both html and body immediately
     document.documentElement.classList.add('no-transitions');
+    document.body && document.body.classList.add('no-transitions');
+    
+    // Function to remove no-transitions class
+    function enableTransitions() {
+      document.documentElement.classList.remove('no-transitions');
+      document.body && document.body.classList.remove('no-transitions');
+    }
+    
+    // Remove after React has had time to render
+    // Using both events to ensure it works in all scenarios
+    var transitionsEnabled = false;
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      if (!transitionsEnabled) {
+        setTimeout(function() {
+          enableTransitions();
+          transitionsEnabled = true;
+        }, 1200);  // 1.2 seconds to ensure React completes verification
+      }
+    });
+    
     window.addEventListener('load', function() {
-      setTimeout(function() {
-        document.documentElement.classList.remove('no-transitions');
-      }, 100);
+      if (!transitionsEnabled) {
+        setTimeout(function() {
+          enableTransitions();
+          transitionsEnabled = true;
+        }, 1200);
+      }
     });
   </script>
   <style>
@@ -73,12 +98,36 @@
       min-height: 100vh;
       /* Force GPU acceleration for smooth rendering */
       transform: translate3d(0,0,0);
+      /* Prevent flash of unstyled content */
+      opacity: 1;
+      transition: opacity 0.15s ease-in;
     }
     
-    /* Prevent transitions on page load */
-    .no-transitions * {
+    /* Hide root until React is ready */
+    #root:empty {
+      opacity: 0;
+    }
+    
+    /* Prevent transitions on page load - CRITICAL FOR NO BLINKING */
+    .no-transitions,
+    .no-transitions *,
+    .no-transitions *::before,
+    .no-transitions *::after {
       transition: none !important;
       animation: none !important;
+      animation-duration: 0s !important;
+      animation-delay: 0s !important;
+    }
+    
+    /* Prevent layout shift during load */
+    body.no-transitions {
+      visibility: visible !important;
+    }
+    
+    /* Spinner animation for loading screen */
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
     
     .logo{

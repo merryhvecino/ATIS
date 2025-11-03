@@ -33,6 +33,11 @@ self.addEventListener('fetch', (e) => {
   const { request } = e
   const url = new URL(request.url)
   
+  // Only handle http/https requests (ignore chrome-extension://, etc.)
+  if (!url.protocol.startsWith('http')) {
+    return
+  }
+  
   // API requests: network first, fallback to cache
   if (url.pathname.startsWith('/stops') || url.pathname.startsWith('/alerts') || 
       url.pathname.startsWith('/weather') || url.pathname.startsWith('/safety') ||
@@ -59,6 +64,9 @@ self.addEventListener('fetch', (e) => {
           caches.open(RUNTIME_CACHE).then(cache => cache.put(request, copy))
         }
         return resp
+      }).catch(() => {
+        // Return a basic fallback for network errors
+        return new Response('Network error', { status: 503 })
       })
     })
   )

@@ -685,7 +685,10 @@ export default function App(){
   // ALL STATE HOOKS MUST BE DECLARED FIRST
   const [token, setToken] = useState(() => localStorage.getItem('atis_token'))
   const [username, setUsername] = useState(() => localStorage.getItem('atis_user'))
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  // Initialize as true if token exists to prevent flash during verification
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return !!(localStorage.getItem('atis_token') && localStorage.getItem('atis_user'))
+  })
   const [isVerifying, setIsVerifying] = useState(true)
   
   const [origin, setOrigin] = useState([-36.8485, 174.7633])
@@ -727,6 +730,11 @@ export default function App(){
   const [searchResults, setSearchResults] = useState([])
   const [searchingFor, setSearchingFor] = useState(null)
 
+  // Assessment features - Environmental & MCDA
+  const [mcdaProfile, setMcdaProfile] = useState('balanced')
+  const [showMcdaBreakdown, setShowMcdaBreakdown] = useState({})
+  const [analyticsData, setAnalyticsData] = useState(null)
+
   const text = TRANSLATIONS[uiLang] || TRANSLATIONS.en
   const convertedAmount = Number((amount * (CURRENCY_RATES[currency] || 1)).toFixed(2))
 
@@ -752,12 +760,12 @@ export default function App(){
           if (!mounted) return
           
           if (response.ok) {
-            // Token is valid - update state in one batch
+            // Token is valid - keep authenticated state
             setToken(savedToken)
             setUsername(savedUser)
-            setIsAuthenticated(true)
+            // isAuthenticated already true from initialization
           } else {
-            // Token is invalid, clear storage
+            // Token is invalid, clear storage and set both states together
             localStorage.removeItem('atis_token')
             localStorage.removeItem('atis_user')
             localStorage.removeItem('atis_login_time')
@@ -776,10 +784,19 @@ export default function App(){
           setUsername(null)
           setIsAuthenticated(false)
         }
-      }
-      
-      if (mounted) {
-        setIsVerifying(false)
+        
+        // Set verification complete AFTER authentication state is finalized
+        if (mounted) {
+          // Use setTimeout to ensure state updates are batched
+          setTimeout(() => setIsVerifying(false), 0)
+        }
+      } else {
+        // No saved token, set both states
+        if (mounted) {
+          setIsAuthenticated(false)
+          // Use setTimeout to ensure state updates are batched
+          setTimeout(() => setIsVerifying(false), 0)
+        }
       }
     }
     
@@ -790,8 +807,11 @@ export default function App(){
     }
   }, [])
 
-  // Load initial data once
+  // Load initial data once (only after authentication is verified)
   useEffect(() => {
+    // Don't load data until verification is complete and user is authenticated
+    if (isVerifying || !isAuthenticated) return
+    
     fetch(`${API}/stops/nearby?lat=${origin[0]}&lng=${origin[1]}&radius=900`)
       .then(r=>r.json()).then(d=>setStops(d.stops||[])).catch(()=>{})
     fetch(`${API}/alerts`)
@@ -802,10 +822,13 @@ export default function App(){
       .then(r=>r.json()).then(d=>setSafetyContacts(d.contacts||[])).catch(()=>{})
     fetch(`${API}/reviews`)
       .then(r=>r.json()).then(d=>setReviews(d.reviews||[])).catch(()=>{})
-  }, [])
+  }, [isAuthenticated, isVerifying])
 
   // Update when origin changes (debounced to prevent excessive re-renders)
   useEffect(() => {
+    // Only update if authenticated
+    if (!isAuthenticated) return
+    
     const timeoutId = setTimeout(() => {
       fetch(`${API}/stops/nearby?lat=${origin[0]}&lng=${origin[1]}&radius=900`)
         .then(r=>r.json()).then(d=>setStops(d.stops||[])).catch(()=>{})
@@ -814,7 +837,7 @@ export default function App(){
     }, 300)
     
     return () => clearTimeout(timeoutId)
-  }, [origin])
+  }, [origin[0], origin[1], isAuthenticated])
 
   const viewDepartures = async (stop) => {
     setSelectedStop(stop)
@@ -836,6 +859,39 @@ export default function App(){
     setItins(d.itineraries || [])
     setBanner(d.context?.weatherAlert || '')
     setAlts({})
+  }
+
+  const trackTrip = async (itinerary) => {
+    if (!token) return
+    try {
+      await fetch(`${API}/analytics/track/trip`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          origin,
+          destination: dest,
+          itinerary
+        })
+      })
+    } catch (error) {
+      console.log('Analytics tracking failed:', error)
+    }
+  }
+
+  const loadAnalytics = async () => {
+    if (!token) return
+    try {
+      const r = await fetch(`${API}/analytics/summary`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const data = await r.json()
+      setAnalyticsData(data)
+    } catch (error) {
+      console.log('Failed to load analytics:', error)
+    }
   }
 
   const exportPdf = async (itinerary) => {
@@ -1078,9 +1134,43 @@ export default function App(){
     setView('home')
   }
 
+  // Show loading screen while verifying token - PREVENTS BLINKING
+  if (isVerifying) {
+    return (
+      <div style={{
+        minHeight:'100vh',
+        width:'100%',
+        display:'flex',
+        flexDirection:'column',
+        alignItems:'center',
+        justifyContent:'center',
+        background:'#0a0e27',  // Exact match to app background
+        color:'white',
+        position:'fixed',
+        top:0,
+        left:0,
+        zIndex:9999
+      }}>
+        <div style={{textAlign:'center'}}>
+          <div style={{
+            width:60,
+            height:60,
+            border:'4px solid rgba(139, 92, 246, 0.3)',
+            borderTop:'4px solid #8b5cf6',
+            borderRadius:'50%',
+            animation:'spin 1s linear infinite',
+            margin:'0 auto 20px'
+          }}></div>
+          <div style={{fontSize:18, fontWeight:600}}>Verifying session...</div>
+          <div style={{fontSize:14, opacity:0.7, marginTop:8}}>Please wait</div>
+        </div>
+      </div>
+    )
+  }
+
   // Show login page if not authenticated - NO ACCESS TO MAIN APP
   if (!isAuthenticated) {
-    return <LoginPage onLogin={handleLogin} isVerifying={isVerifying} />
+    return <LoginPage onLogin={handleLogin} isVerifying={false} />
   }
 
   return (
@@ -1113,10 +1203,10 @@ export default function App(){
 
           {/* Navigation Tabs */}
           <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
-            {['home','plan','map','alerts','safety','reviews','settings'].map(v => (
+            {['home','plan','map','alerts','safety','reviews','analytics','settings'].map(v => (
               <button
                 key={v}
-                onClick={() => setView(v)}
+                onClick={() => {setView(v); if(v === 'analytics') loadAnalytics();}}
                 className={view === v ? 'btn btn-primary' : 'chip'}
                 style={{
                   padding:'8px 16px',
@@ -1128,7 +1218,7 @@ export default function App(){
               >
                 {v === 'home' && '🏠'} {v === 'plan' && '🗺️'} {v === 'map' && '🌍'}
                 {v === 'alerts' && '⚠️'} {v === 'safety' && '🛡️'} {v === 'reviews' && '⭐'}
-                {v === 'settings' && '⚙️'} {' '}{v.charAt(0).toUpperCase() + v.slice(1)}
+                {v === 'analytics' && '📊'} {v === 'settings' && '⚙️'} {' '}{v.charAt(0).toUpperCase() + v.slice(1)}
               </button>
             ))}
           </div>
@@ -1620,7 +1710,16 @@ export default function App(){
                               
                               <div style={{padding:12, background:'rgba(255,255,255,0.05)', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)'}}>
                                 <div style={{fontSize:11, opacity:0.6, marginBottom:4}}>🌱 CO₂ Savings</div>
-                                <div style={{fontSize:16, fontWeight:700}}>{(it.durationMin * 0.05).toFixed(1)} kg</div>
+                                <div style={{fontSize:16, fontWeight:700}}>
+                                  {it.environmental ? 
+                                    `${it.environmental.co2_saved_kg.toFixed(2)} kg` : 
+                                    `${(it.durationMin * 0.05).toFixed(1)} kg`}
+                                </div>
+                                {it.environmental && (
+                                  <div style={{fontSize:10, opacity:0.5, marginTop:2}}>
+                                    {it.environmental.co2_saved_percent.toFixed(0)}% vs car
+                                  </div>
+                                )}
                               </div>
                               
                               <div style={{padding:12, background:'rgba(255,255,255,0.05)', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)'}}>
@@ -1810,6 +1909,181 @@ export default function App(){
                                 <li>Check real-time updates before you leave</li>
                               </ul>
                             </div>
+
+                            {/* MCDA Score Breakdown - Assessment Feature */}
+                            {it.mcda_score && (
+                              <div style={{
+                                marginTop:20,
+                                padding:16,
+                                background:'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(219, 39, 119, 0.1) 100%)',
+                                border:'2px solid rgba(139, 92, 246, 0.3)',
+                                borderRadius:12
+                              }}>
+                                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
+                                  <div style={{fontSize:14, fontWeight:700, color:'#a78bfa'}}>
+                                    🏆 Multi-Criteria Decision Score (MCDA)
+                                  </div>
+                                  <div style={{
+                                    fontSize:24,
+                                    fontWeight:700,
+                                    color: it.mcda_score >= 85 ? '#10b981' : it.mcda_score >= 70 ? '#3b82f6' : '#f59e0b',
+                                    display:'flex',
+                                    alignItems:'center',
+                                    gap:6
+                                  }}>
+                                    {it.mcda_score.toFixed(1)}/100
+                                    {it.mcda_rank && <span style={{fontSize:14, opacity:0.7}}>#{it.mcda_rank}</span>}
+                                  </div>
+                                </div>
+
+                                {it.mcda_recommendation && (
+                                  <div style={{
+                                    fontSize:12,
+                                    padding:'8px 12px',
+                                    background:'rgba(139, 92, 246, 0.15)',
+                                    borderRadius:8,
+                                    marginBottom:12,
+                                    color:'rgba(255,255,255,0.9)'
+                                  }}>
+                                    {it.mcda_recommendation}
+                                  </div>
+                                )}
+
+                                {it.mcda_breakdown && (
+                                  <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(120px, 1fr))', gap:10}}>
+                                    {Object.entries(it.mcda_breakdown).map(([criterion, score]) => (
+                                      <div key={criterion} style={{
+                                        padding:10,
+                                        background:'rgba(0,0,0,0.2)',
+                                        borderRadius:8,
+                                        border:'1px solid rgba(255,255,255,0.1)'
+                                      }}>
+                                        <div style={{fontSize:10, opacity:0.6, marginBottom:4, textTransform:'capitalize'}}>
+                                          {criterion === 'time' ? '⏱️' : 
+                                           criterion === 'cost' ? '💰' :
+                                           criterion === 'comfort' ? '🛋️' :
+                                           criterion === 'reliability' ? '✓' :
+                                           '🌱'} {criterion}
+                                        </div>
+                                        <div style={{fontSize:14, fontWeight:700, color: score >= 80 ? '#10b981' : score >= 60 ? '#3b82f6' : '#f59e0b'}}>
+                                          {score.toFixed(0)}/100
+                                        </div>
+                                        <div style={{
+                                          width:'100%',
+                                          height:4,
+                                          background:'rgba(255,255,255,0.1)',
+                                          borderRadius:2,
+                                          marginTop:4,
+                                          overflow:'hidden'
+                                        }}>
+                                          <div style={{
+                                            width:`${score}%`,
+                                            height:'100%',
+                                            background: score >= 80 ? '#10b981' : score >= 60 ? '#3b82f6' : '#f59e0b',
+                                            borderRadius:2
+                                          }} />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {it.mcda_weights && (
+                                  <div style={{fontSize:10, opacity:0.5, marginTop:8}}>
+                                    Weights: {Object.entries(it.mcda_weights).map(([k,v]) => `${k} ${(v*100).toFixed(0)}%`).join(' • ')}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Environmental Impact Details - Assessment Feature */}
+                            {it.environmental && (
+                              <div style={{
+                                marginTop:20,
+                                padding:16,
+                                background:'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(52, 211, 153, 0.1) 100%)',
+                                border:'2px solid rgba(16, 185, 129, 0.3)',
+                                borderRadius:12
+                              }}>
+                                <div style={{fontSize:14, fontWeight:700, color:'#10b981', marginBottom:12}}>
+                                  🌍 Environmental Impact Analysis
+                                </div>
+
+                                <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:12, marginBottom:12}}>
+                                  <div style={{padding:12, background:'rgba(16, 185, 129, 0.1)', borderRadius:8}}>
+                                    <div style={{fontSize:11, opacity:0.7, marginBottom:4}}>CO₂ Emissions</div>
+                                    <div style={{fontSize:18, fontWeight:700, color:'#10b981'}}>
+                                      {it.environmental.total_co2_kg.toFixed(2)} kg
+                                    </div>
+                                  </div>
+
+                                  <div style={{padding:12, background:'rgba(16, 185, 129, 0.1)', borderRadius:8}}>
+                                    <div style={{fontSize:11, opacity:0.7, marginBottom:4}}>CO₂ Saved vs Car</div>
+                                    <div style={{fontSize:18, fontWeight:700, color:'#10b981'}}>
+                                      {it.environmental.co2_saved_kg.toFixed(2)} kg
+                                    </div>
+                                    <div style={{fontSize:10, opacity:0.6, marginTop:2}}>
+                                      {it.environmental.co2_saved_percent.toFixed(0)}% reduction
+                                    </div>
+                                  </div>
+
+                                  <div style={{padding:12, background:'rgba(16, 185, 129, 0.1)', borderRadius:8}}>
+                                    <div style={{fontSize:11, opacity:0.7, marginBottom:4}}>Distance</div>
+                                    <div style={{fontSize:18, fontWeight:700, color:'#10b981'}}>
+                                      {it.environmental.total_distance_km.toFixed(1)} km
+                                    </div>
+                                  </div>
+
+                                  <div style={{padding:12, background:'rgba(16, 185, 129, 0.1)', borderRadius:8}}>
+                                    <div style={{fontSize:11, opacity:0.7, marginBottom:4}}>Trees to Offset</div>
+                                    <div style={{fontSize:18, fontWeight:700, color:'#10b981'}}>
+                                      {it.environmental.trees_equivalent.toFixed(2)} 🌳
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {it.environmental.legs && it.environmental.legs.length > 0 && (
+                                  <div style={{marginTop:12}}>
+                                    <div style={{fontSize:12, fontWeight:600, marginBottom:8, opacity:0.8}}>
+                                      Emissions by Leg:
+                                    </div>
+                                    <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                                      {it.environmental.legs.map((leg, idx) => (
+                                        <div key={idx} style={{
+                                          display:'flex',
+                                          justifyContent:'space-between',
+                                          padding:'8px 12px',
+                                          background:'rgba(0,0,0,0.2)',
+                                          borderRadius:6,
+                                          fontSize:11
+                                        }}>
+                                          <span>{leg.mode} ({leg.distance_km.toFixed(1)} km)</span>
+                                          <span style={{fontWeight:600, color:'#10b981'}}>
+                                            {leg.co2_kg.toFixed(3)} kg CO₂
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div style={{
+                                  marginTop:12,
+                                  padding:'10px 12px',
+                                  background:'rgba(16, 185, 129, 0.15)',
+                                  borderRadius:8,
+                                  fontSize:12
+                                }}>
+                                  💡 <b>Eco-Score:</b> {it.environmental.eco_score ? 
+                                    `${it.environmental.eco_score}/100` : 
+                                    'Excellent choice for the environment!'
+                                  }
+                                  {it.environmental.co2_saved_percent >= 70 && 
+                                    " - You're making a significant positive impact! 🌟"
+                                  }
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                         {alts[it.id] && (
@@ -2119,6 +2393,176 @@ export default function App(){
               </div>
             </div>
           </FeatureCard>
+          </div>
+        )}
+
+        {view === 'analytics' && (
+          <div>
+            <h2 className="section-title">📊 System Analytics Dashboard</h2>
+            <div style={{
+              padding:'16px 20px',
+              background:'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%)',
+              borderRadius:12,
+              border:'1px solid rgba(59, 130, 246, 0.3)',
+              marginBottom:24
+            }}>
+              <div style={{fontSize:14}}>
+                <b>🎓 Assessment Feature:</b> Analytics dashboard tracks system usage, environmental impact, and performance metrics for research and evaluation purposes.
+              </div>
+            </div>
+
+            {analyticsData ? (
+              <>
+                {/* Summary Stats Grid */}
+                <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:16, marginBottom:32}}>
+                  <div style={{padding:20, background:'var(--glass-bg)', backdropFilter:'blur(10px)', borderRadius:12, border:'1px solid var(--glass-border)'}}>
+                    <div style={{fontSize:12, opacity:0.7, marginBottom:6}}>Total Trips Planned</div>
+                    <div style={{fontSize:32, fontWeight:700, color:'#3b82f6'}}>{analyticsData.total_trips || 0}</div>
+                  </div>
+
+                  <div style={{padding:20, background:'var(--glass-bg)', backdropFilter:'blur(10px)', borderRadius:12, border:'1px solid var(--glass-border)'}}>
+                    <div style={{fontSize:12, opacity:0.7, marginBottom:6}}>Active Users (7d)</div>
+                    <div style={{fontSize:32, fontWeight:700, color:'#8b5cf6'}}>{analyticsData.active_users_7d || 0}</div>
+                  </div>
+
+                  <div style={{padding:20, background:'var(--glass-bg)', backdropFilter:'blur(10px)', borderRadius:12, border:'1px solid var(--glass-border)'}}>
+                    <div style={{fontSize:12, opacity:0.7, marginBottom:6}}>CO₂ Saved (kg)</div>
+                    <div style={{fontSize:32, fontWeight:700, color:'#10b981'}}>{analyticsData.total_co2_saved_kg?.toFixed(1) || 0}</div>
+                    <div style={{fontSize:11, opacity:0.6, marginTop:4}}>vs driving alone</div>
+                  </div>
+
+                  <div style={{padding:20, background:'var(--glass-bg)', backdropFilter:'blur(10px)', borderRadius:12, border:'1px solid var(--glass-border)'}}>
+                    <div style={{fontSize:12, opacity:0.7, marginBottom:6}}>Avg MCDA Score</div>
+                    <div style={{fontSize:32, fontWeight:700, color:'#f59e0b'}}>{analyticsData.avg_mcda_score?.toFixed(1) || 0}</div>
+                    <div style={{fontSize:11, opacity:0.6, marginTop:4}}>out of 100</div>
+                  </div>
+                </div>
+
+                {/* Performance Metrics */}
+                <FeatureCard icon="📈" title="System Performance" description="Route quality and user satisfaction metrics">
+                  <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))', gap:20}}>
+                    <div>
+                      <div style={{fontWeight:600, marginBottom:8}}>Trip Metrics</div>
+                      <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                        <div style={{display:'flex', justifyContent:'space-between'}}>
+                          <span style={{opacity:0.7}}>Avg Duration:</span>
+                          <strong>{analyticsData.avg_duration_min?.toFixed(1) || 0} min</strong>
+                        </div>
+                        <div style={{display:'flex', justifyContent:'space-between'}}>
+                          <span style={{opacity:0.7}}>Avg Transfers:</span>
+                          <strong>{analyticsData.avg_transfers?.toFixed(1) || 0}</strong>
+                        </div>
+                        <div style={{display:'flex', justifyContent:'space-between'}}>
+                          <span style={{opacity:0.7}}>Total Distance:</span>
+                          <strong>{analyticsData.total_distance_km?.toFixed(1) || 0} km</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{fontWeight:600, marginBottom:8}}>Environmental Impact</div>
+                      <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                        <div style={{display:'flex', justifyContent:'space-between'}}>
+                          <span style={{opacity:0.7}}>Car Trips Avoided:</span>
+                          <strong style={{color:'#10b981'}}>{analyticsData.car_trips_avoided || 0}</strong>
+                        </div>
+                        <div style={{display:'flex', justifyContent:'space-between'}}>
+                          <span style={{opacity:0.7}}>Total CO₂ Saved:</span>
+                          <strong style={{color:'#10b981'}}>{analyticsData.total_co2_saved_kg?.toFixed(2) || 0} kg</strong>
+                        </div>
+                        <div style={{display:'flex', justifyContent:'space-between'}}>
+                          <span style={{opacity:0.7}}>Avg per Trip:</span>
+                          <strong style={{color:'#10b981'}}>
+                            {(analyticsData.total_co2_saved_kg / Math.max(analyticsData.total_trips, 1))?.toFixed(2) || 0} kg
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{fontWeight:600, marginBottom:8}}>System Health</div>
+                      <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                        <div style={{display:'flex', justifyContent:'space-between'}}>
+                          <span style={{opacity:0.7}}>Total Users:</span>
+                          <strong>{analyticsData.total_users || 0}</strong>
+                        </div>
+                        <div style={{display:'flex', justifyContent:'space-between'}}>
+                          <span style={{opacity:0.7}}>Total Searches:</span>
+                          <strong>{analyticsData.total_searches || 0}</strong>
+                        </div>
+                        <div style={{display:'flex', justifyContent:'space-between'}}>
+                          <span style={{opacity:0.7}}>Uptime:</span>
+                          <strong>{analyticsData.system_uptime_days?.toFixed(1) || 0} days</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </FeatureCard>
+
+                {/* MCDA Insights */}
+                <FeatureCard icon="🏆" title="Multi-Criteria Decision Analysis" description="Route scoring breakdown across all trips">
+                  <div style={{padding:16, background:'rgba(139, 92, 246, 0.1)', borderRadius:8}}>
+                    <div style={{fontSize:14, marginBottom:12}}>
+                      Average MCDA score of <strong style={{color:'#8b5cf6'}}>{analyticsData.avg_mcda_score?.toFixed(1)}/100</strong> indicates{' '}
+                      {analyticsData.avg_mcda_score >= 80 ? 'excellent' : 
+                       analyticsData.avg_mcda_score >= 65 ? 'good' : 
+                       'acceptable'} route quality across all planned trips.
+                    </div>
+                    <div style={{fontSize:12, opacity:0.7}}>
+                      💡 MCDA considers time, cost, comfort, reliability, and environmental factors to rank route options.
+                    </div>
+                  </div>
+                </FeatureCard>
+
+                {/* Environmental Summary */}
+                <FeatureCard icon="🌍" title="Environmental Impact Summary" description="Cumulative sustainability metrics">
+                  <div style={{padding:20, background:'linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(52, 211, 153, 0.1) 100%)', borderRadius:12, border:'1px solid rgba(16, 185, 129, 0.3)'}}>
+                    <div style={{fontSize:18, fontWeight:700, marginBottom:12, color:'#10b981'}}>
+                      🌟 Total CO₂ Savings: {analyticsData.total_co2_saved_kg?.toFixed(2) || 0} kg
+                    </div>
+                    <div style={{fontSize:14, opacity:0.9, marginBottom:16}}>
+                      By using public transport instead of driving, users have collectively saved{' '}
+                      <strong style={{color:'#10b981'}}>{analyticsData.total_co2_saved_kg?.toFixed(2) || 0} kg of CO₂</strong> emissions.
+                    </div>
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:12}}>
+                      <div style={{padding:12, background:'rgba(16, 185, 129, 0.15)', borderRadius:8}}>
+                        <div style={{fontSize:12, opacity:0.7}}>Equivalent Trees</div>
+                        <div style={{fontSize:24, fontWeight:700, color:'#10b981'}}>
+                          {((analyticsData.total_co2_saved_kg / 1000) * 45.9)?.toFixed(1) || 0} 🌳
+                        </div>
+                        <div style={{fontSize:10, opacity:0.6, marginTop:4}}>needed to offset emissions</div>
+                      </div>
+
+                      <div style={{padding:12, background:'rgba(16, 185, 129, 0.15)', borderRadius:8}}>
+                        <div style={{fontSize:12, opacity:0.7}}>Car Trips Avoided</div>
+                        <div style={{fontSize:24, fontWeight:700, color:'#10b981'}}>
+                          {analyticsData.car_trips_avoided || 0}
+                        </div>
+                        <div style={{fontSize:10, opacity:0.6, marginTop:4}}>reduced congestion</div>
+                      </div>
+
+                      <div style={{padding:12, background:'rgba(16, 185, 129, 0.15)', borderRadius:8}}>
+                        <div style={{fontSize:12, opacity:0.7}}>Distance Traveled</div>
+                        <div style={{fontSize:24, fontWeight:700, color:'#10b981'}}>
+                          {analyticsData.total_distance_km?.toFixed(1) || 0} km
+                        </div>
+                        <div style={{fontSize:10, opacity:0.6, marginTop:4}}>via public transport</div>
+                      </div>
+                    </div>
+                  </div>
+                </FeatureCard>
+
+                <div style={{marginTop:20, padding:16, background:'rgba(59, 130, 246, 0.1)', borderRadius:8, fontSize:13, opacity:0.8}}>
+                  ℹ️ <b>Note:</b> Analytics data is tracked for research and assessment purposes. All metrics are calculated based on actual trip planning data.
+                </div>
+              </>
+            ) : (
+              <div style={{textAlign:'center', padding:60}}>
+                <div style={{fontSize:48, marginBottom:16}}>📊</div>
+                <div style={{fontSize:16, opacity:0.7, marginBottom:12}}>Loading analytics data...</div>
+                <div style={{fontSize:14, opacity:0.5}}>Plan some trips to see analytics!</div>
+              </div>
+            )}
           </div>
         )}
 
