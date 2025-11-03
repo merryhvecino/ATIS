@@ -938,6 +938,14 @@ export default function App(){
     setSearchingFor(null)
   }
 
+  // Close dropdown when clicking outside
+  const closeSearchDropdown = () => {
+    setSearchResults([])
+    setSearchingFor(null)
+    setOriginSearch('')
+    setDestSearch('')
+  }
+
   // Use current location
   const useCurrentLocation = (type) => {
     if (navigator.geolocation) {
@@ -1181,18 +1189,210 @@ export default function App(){
           <FeatureCard icon="🧭" title={text.tripPlanning} description="Plan ahead, adapt on the fly, and export journeys for the road.">
             <div style={{display:'grid', gap:24, gridTemplateColumns:'minmax(260px, 1fr) minmax(320px, 1.35fr)'}}>
               <div style={{display:'flex', flexDirection:'column', gap:12}}>
-                <label style={{display:'flex', flexDirection:'column', gap:4}}>
-                  <span style={{fontSize:12, opacity:0.75}}>Origin (lat,lng)</span>
-                  <input value={origin.join(',')} onChange={e => setOrigin(e.target.value.split(',').map(Number))} />
-                </label>
-                <label style={{display:'flex', flexDirection:'column', gap:4}}>
-                  <span style={{fontSize:12, opacity:0.75}}>Destination (lat,lng)</span>
-                  <input value={dest.join(',')} onChange={e => setDest(e.target.value.split(',').map(Number))} />
-                </label>
-                <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
-                  <button className="btn" style={{flex:1}} onClick={() => setOrigin(dest)}>Use destination as origin</button>
-                  <button className="btn" style={{flex:1}} onClick={() => setDest(origin)}>Use origin as destination</button>
-                  <button className="btn" onClick={swapOD}>Swap</button>
+                {/* Origin Location Search */}
+                <div style={{position:'relative'}}>
+                  <label style={{display:'flex', flexDirection:'column', gap:4}}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                      <span style={{fontSize:12, opacity:0.75}}>📍 Origin</span>
+                      <button 
+                        className="btn" 
+                        onClick={() => useCurrentLocation('origin')}
+                        style={{padding:'4px 8px', fontSize:11}}
+                        title="Use my current location"
+                      >
+                        📍 Current
+                      </button>
+                    </div>
+                    <input 
+                      value={originSearch || originName} 
+                      onChange={e => {
+                        setOriginSearch(e.target.value)
+                        searchLocation(e.target.value, 'origin')
+                      }}
+                      onFocus={e => e.target.select()}
+                      placeholder="Search for a place..."
+                      style={{fontWeight:600}}
+                    />
+                  </label>
+                  {searchingFor === 'origin' && searchResults.length > 0 && (
+                    <div style={{
+                      position:'absolute', 
+                      top:'100%', 
+                      left:0, 
+                      right:0, 
+                      zIndex:1000,
+                      background:'linear-gradient(135deg, rgba(30, 41, 59, 0.98) 0%, rgba(15, 23, 42, 0.98) 100%)',
+                      backdropFilter:'blur(40px)',
+                      border:'2px solid rgba(139, 92, 246, 0.4)', 
+                      borderRadius:16, 
+                      marginTop:8,
+                      maxHeight:320,
+                      overflowY:'auto',
+                      boxShadow:'0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1) inset'
+                    }}>
+                      <div style={{
+                        padding:'10px 14px',
+                        fontSize:11,
+                        fontWeight:700,
+                        color:'rgba(139, 92, 246, 1)',
+                        borderBottom:'1px solid rgba(139, 92, 246, 0.2)',
+                        textTransform:'uppercase',
+                        letterSpacing:'0.5px'
+                      }}>
+                        📍 Select Origin Location
+                      </div>
+                      {searchResults.map((result, i) => (
+                        <div 
+                          key={i}
+                          onClick={() => selectLocation(result)}
+                          style={{
+                            padding:'14px 16px', 
+                            cursor:'pointer', 
+                            borderBottom: i < searchResults.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                            transition:'all 0.2s',
+                            background:'transparent'
+                          }}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.background = 'linear-gradient(90deg, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.15) 100%)'
+                            e.currentTarget.style.borderLeft = '3px solid rgba(139, 92, 246, 0.8)'
+                            e.currentTarget.style.paddingLeft = '13px'
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.background = 'transparent'
+                            e.currentTarget.style.borderLeft = 'none'
+                            e.currentTarget.style.paddingLeft = '16px'
+                          }}
+                        >
+                          <div style={{
+                            fontWeight:700, 
+                            fontSize:15, 
+                            color:'#ffffff',
+                            marginBottom:6,
+                            display:'flex',
+                            alignItems:'center',
+                            gap:8
+                          }}>
+                            <span style={{fontSize:18}}>📍</span>
+                            {result.display_name.split(',')[0]}
+                          </div>
+                          <div style={{
+                            fontSize:12, 
+                            color:'rgba(255,255,255,0.6)', 
+                            lineHeight:1.5,
+                            paddingLeft:26
+                          }}>
+                            {result.display_name.split(',').slice(1).join(',').trim()}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{fontSize:11, opacity:0.5, marginTop:4}}>{origin[0].toFixed(4)}, {origin[1].toFixed(4)}</div>
+                </div>
+
+                {/* Destination Location Search */}
+                <div style={{position:'relative'}}>
+                  <label style={{display:'flex', flexDirection:'column', gap:4}}>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                      <span style={{fontSize:12, opacity:0.75}}>🎯 Destination</span>
+                      <button 
+                        className="btn" 
+                        onClick={() => useCurrentLocation('dest')}
+                        style={{padding:'4px 8px', fontSize:11}}
+                        title="Use my current location"
+                      >
+                        📍 Current
+                      </button>
+                    </div>
+                    <input 
+                      value={destSearch || destName} 
+                      onChange={e => {
+                        setDestSearch(e.target.value)
+                        searchLocation(e.target.value, 'dest')
+                      }}
+                      onFocus={e => e.target.select()}
+                      placeholder="Search for a place..."
+                      style={{fontWeight:600}}
+                    />
+                  </label>
+                  {searchingFor === 'dest' && searchResults.length > 0 && (
+                    <div style={{
+                      position:'absolute', 
+                      top:'100%', 
+                      left:0, 
+                      right:0, 
+                      zIndex:1000,
+                      background:'linear-gradient(135deg, rgba(30, 41, 59, 0.98) 0%, rgba(15, 23, 42, 0.98) 100%)',
+                      backdropFilter:'blur(40px)',
+                      border:'2px solid rgba(59, 130, 246, 0.4)', 
+                      borderRadius:16, 
+                      marginTop:8,
+                      maxHeight:320,
+                      overflowY:'auto',
+                      boxShadow:'0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1) inset'
+                    }}>
+                      <div style={{
+                        padding:'10px 14px',
+                        fontSize:11,
+                        fontWeight:700,
+                        color:'rgba(59, 130, 246, 1)',
+                        borderBottom:'1px solid rgba(59, 130, 246, 0.2)',
+                        textTransform:'uppercase',
+                        letterSpacing:'0.5px'
+                      }}>
+                        🎯 Select Destination Location
+                      </div>
+                      {searchResults.map((result, i) => (
+                        <div 
+                          key={i}
+                          onClick={() => selectLocation(result)}
+                          style={{
+                            padding:'14px 16px', 
+                            cursor:'pointer', 
+                            borderBottom: i < searchResults.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                            transition:'all 0.2s',
+                            background:'transparent'
+                          }}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.background = 'linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%)'
+                            e.currentTarget.style.borderLeft = '3px solid rgba(59, 130, 246, 0.8)'
+                            e.currentTarget.style.paddingLeft = '13px'
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.background = 'transparent'
+                            e.currentTarget.style.borderLeft = 'none'
+                            e.currentTarget.style.paddingLeft = '16px'
+                          }}
+                        >
+                          <div style={{
+                            fontWeight:700, 
+                            fontSize:15, 
+                            color:'#ffffff',
+                            marginBottom:6,
+                            display:'flex',
+                            alignItems:'center',
+                            gap:8
+                          }}>
+                            <span style={{fontSize:18}}>🎯</span>
+                            {result.display_name.split(',')[0]}
+                          </div>
+                          <div style={{
+                            fontSize:12, 
+                            color:'rgba(255,255,255,0.6)', 
+                            lineHeight:1.5,
+                            paddingLeft:26
+                          }}>
+                            {result.display_name.split(',').slice(1).join(',').trim()}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{fontSize:11, opacity:0.5, marginTop:4}}>{dest[0].toFixed(4)}, {dest[1].toFixed(4)}</div>
+                </div>
+
+                <div style={{display:'flex', gap:8}}>
+                  <button className="btn btn-primary" onClick={swapOD} style={{flex:1}}>🔄 Swap</button>
                 </div>
                 <div style={{display:'flex', flexDirection:'column', gap:6}}>
                   <span style={{fontSize:12, opacity:0.75}}>Preferred modes</span>
