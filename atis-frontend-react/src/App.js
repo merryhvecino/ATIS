@@ -194,6 +194,21 @@ const getSeverityAppearance = (severity = '') => {
   return ALERT_SEVERITY_STYLES[key] || { bg: 'rgba(148,163,184,0.18)', color: '#475569', label: severity ? severity : 'Info' }
 }
 
+const SEVERITY_RANK = {
+  critical: 6,
+  high: 5,
+  warning: 4,
+  moderate: 3,
+  planned: 2,
+  info: 1,
+  low: 0
+}
+
+const getSeverityRank = (severity = '') => {
+  const key = severity.toLowerCase()
+  return SEVERITY_RANK[key] ?? 1
+}
+
 const formatAlertWindow = (start, end) => {
   if (!start && !end) return ''
   const opts = { hour: 'numeric', minute: '2-digit' }
@@ -203,6 +218,37 @@ const formatAlertWindow = (start, end) => {
   if (startStr) return `From ${startStr}`
   if (endStr) return `Until ${endStr}`
   return ''
+}
+
+const formatMinutesAsDuration = (minutes) => {
+  if (minutes == null) return null
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  if (mins === 0) return `${hours} hr`
+  return `${hours} hr ${mins} min`
+}
+
+const formatAlertStatus = (start, end) => {
+  const now = Date.now()
+  const startMs = start ? new Date(start).getTime() : null
+  const endMs = end ? new Date(end).getTime() : null
+  if (startMs && startMs > now) {
+    const diffMin = Math.max(1, Math.round((startMs - now) / 60000))
+    if (diffMin < 60) return `Starts in ${diffMin} min`
+    const hours = Math.round(diffMin / 60)
+    return `Starts in ${hours} hr`
+  }
+  if (endMs && endMs < now) {
+    const diffMin = Math.max(1, Math.round((now - endMs) / 60000))
+    if (diffMin < 60) return `Ended ${diffMin} min ago`
+    const hours = Math.round(diffMin / 60)
+    return `Ended ${hours} hr ago`
+  }
+  if (startMs && startMs <= now && (!endMs || endMs >= now)) {
+    return 'Ongoing now'
+  }
+  return 'Active'
 }
 
 function DraggableMarker({ position, setPosition, label }) {
