@@ -6,13 +6,36 @@ def nearby_stops(lat: float, lng: float, radius: float = 900):
     return query_nearby_stops(lat, lng, radius)
 
 def sample_departures(stop_id: str):
-    headways = [2, 5, 9, 12, 15, 20]
-    return [{
-        "route": f"{random.choice(['NX1','NX2','OUT','INNER','WEST','EAST'])}",
-        "headsign": random.choice(["City", "Albany", "Britomart", "Newmarket", "Takapuna"]),
-        "departure_in_min": h,
-        "realtime": True
-    } for h in headways]
+    now = datetime.utcnow()
+    headways = [2, 5, 9, 12, 15, 20, 25, 30, 35, 40]
+    routes = ['NX1', 'NX2', 'OUT', 'INNER', 'WEST', 'EAST', '82', '83', 'LINK']
+    destinations = ["City", "Albany", "Britomart", "Newmarket", "Takapuna", "Airport", "Manukau", "Henderson"]
+    platforms = ["Platform A", "Platform B", "Bay 1", "Bay 2", "Bay 3", "Stand 4"]
+    
+    departures = []
+    for h in headways:
+        route = random.choice(routes)
+        is_delayed = random.random() < 0.2  # 20% chance of delay
+        delay = random.choice([2, 3, 5, 7]) if is_delayed else 0
+        is_accessible = random.random() < 0.85  # 85% of services are accessible
+        
+        departures.append({
+            "route": route,
+            "headsign": random.choice(destinations),
+            "departure_time": (now + timedelta(minutes=h + delay)).isoformat(),
+            "scheduled_time": (now + timedelta(minutes=h)).isoformat(),
+            "departure_in_min": h,
+            "delay_min": delay,
+            "platform": random.choice(platforms),
+            "vehicle_type": "Double Decker" if route in ['NX1', 'NX2'] else "Standard Bus",
+            "accessible": is_accessible,
+            "occupancy": random.choice(["seats_available", "standing_room", "crowded", "many_seats"]),
+            "realtime": True,
+            "trip_id": f"TRIP-{stop_id}-{h}",
+            "service_type": "express" if route.startswith('NX') else "local"
+        })
+    
+    return departures
 
 def _base_options():
     return [

@@ -1339,10 +1339,251 @@ export default function App(){
   // Assessment features - Environmental & MCDA
   const [mcdaProfile, setMcdaProfile] = useState('balanced')
   const [showMcdaBreakdown, setShowMcdaBreakdown] = useState({})
-  const [analyticsData, setAnalyticsData] = useState(null)
 
   const text = TRANSLATIONS[uiLang] || TRANSLATIONS.en
   const convertedAmount = Number((amount * (CURRENCY_RATES[currency] || 1)).toFixed(2))
+
+  const sortedAlerts = useMemo(() => {
+    const now = Date.now()
+    const isOngoing = (alert) => {
+      const start = alert.start_time ? new Date(alert.start_time).getTime() : null
+      const end = alert.end_time ? new Date(alert.end_time).getTime() : null
+      const started = !start || start <= now
+      const notEnded = !end || end >= now
+      return started && notEnded
+    }
+    const getStart = (alert) => alert.start_time ? new Date(alert.start_time).getTime() : now - 1
+    const getEnd = (alert) => alert.end_time ? new Date(alert.end_time).getTime() : now + 1
+    const copy = [...alerts]
+    copy.sort((a, b) => {
+      const rankDiff = getSeverityRank(b.severity) - getSeverityRank(a.severity)
+      if (rankDiff !== 0) return rankDiff
+      const aOngoing = isOngoing(a)
+      const bOngoing = isOngoing(b)
+      if (aOngoing !== bOngoing) return aOngoing ? -1 : 1
+      const startDiff = getStart(a) - getStart(b)
+      if (startDiff !== 0) return startDiff
+      return getEnd(a) - getEnd(b)
+    })
+    return copy
+  }, [alerts])
+
+  const alertStats = useMemo(() => {
+    const now = Date.now()
+    let severe = 0
+    let upcoming = 0
+    let ongoing = 0
+    let delaySum = 0
+    let delayCount = 0
+    let nextStart = null
+    const severityBreakdown = {}
+
+    sortedAlerts.forEach(alert => {
+      const rank = getSeverityRank(alert.severity)
+      if (rank >= 4) severe += 1
+
+      const start = alert.start_time ? new Date(alert.start_time).getTime() : null
+      const end = alert.end_time ? new Date(alert.end_time).getTime() : null
+      const isUpcoming = start && start > now
+      const isOngoing = (!start || start <= now) && (!end || end >= now)
+
+      if (isUpcoming) {
+        upcoming += 1
+        if (!nextStart || start < nextStart) {
+          nextStart = start
+        }
+      }
+      if (isOngoing) ongoing += 1
+
+      if (typeof alert.expected_delay_min === 'number') {
+        delaySum += alert.expected_delay_min
+        delayCount += 1
+      }
+
+      const sevKey = (alert.severity || 'info').toLowerCase()
+      severityBreakdown[sevKey] = (severityBreakdown[sevKey] || 0) + 1
+    })
+
+    return {
+      total: sortedAlerts.length,
+      severe,
+      upcoming,
+      ongoing,
+      avgDelay: delayCount ? Math.round(delaySum / delayCount) : null,
+      nextStart,
+      severityBreakdown
+    }
+  }, [sortedAlerts])
+
+  const topAlert = useMemo(() => {
+    if (sortedAlerts.length === 0) return null
+    const priorityAlert = sortedAlerts.find(a => getSeverityRank(a.severity) >= 4)
+    return priorityAlert || sortedAlerts[0]
+  }, [sortedAlerts])
+
+  const alertSummaryCards = useMemo(() => {
+    const cards = [
+      { icon: '⚡', label: 'Active alerts', value: alertStats.total },
+      { icon: '🔥', label: 'Severe disruptions', value: alertStats.severe },
+      { icon: '⏳', label: 'Ongoing now', value: alertStats.ongoing },
+      { icon: '📅', label: 'Upcoming', value: alertStats.upcoming }
+    ]
+
+    if (alertStats.avgDelay != null) {
+      cards.push({ icon: '🕒', label: 'Average delay', value: formatMinutesAsDuration(alertStats.avgDelay) })
+    }
+    if (alertStats.nextStart) {
+      cards.push({ icon: '🔔', label: 'Next disruption', value: new Date(alertStats.nextStart).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) })
+    }
+    return cards
+  }, [alertStats])
+
+  const homeMetrics = useMemo(() => {
+    return [
+      {
+        icon: '🛰️',
+        label: 'Nearby stops',
+        value: stops.length,
+        meta: stops.length ? 'within 1 km radius' : 'Pulling nearby stops…'
+      },
+      {
+        icon: '🧭',
+        label: 'Routes planned',
+        value: itins.length,
+        meta: itins.length ? 'Saved for quick launch' : 'No itineraries yet'
+      },
+      {
+        icon: '⚠️',
+        label: 'Active alerts',
+        value: alertStats.total,
+        meta: alertStats.severe ? `${alertStats.severe} severe` : 'All manageable'
+      },
+      {
+        icon: '🚦',
+        label: 'Traffic refresh',
+        value: lastTrafficUpdate ? getRelativeTime(lastTrafficUpdate) : 'Awaiting feed',
+        meta: lastTrafficUpdate ? 'Last update' : 'Tap refresh on map'
+      }
+    ]
+  }, [stops.length, itins.length, alertStats.total, alertStats.severe, lastTrafficUpdate])
+
+
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours()
+    if (hour < 12) return 'Good morning'
+    if (hour < 18) return 'Good afternoon'
+    return 'Good evening'
+  }, [])
+
+  const formattedDateTime = useMemo(() => {
+    return new Date().toLocaleString([], {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    })
+  }, [])
+
+  const topAlertStatus = useMemo(() => {
+    if (!topAlert) return null
+    return formatAlertStatus(topAlert.start_time, topAlert.end_time)
+  }, [topAlert])
+
+  // Transit system status - simulated real-time
+  const transitStatus = useMemo(() => {
+    const modes = [
+      { name: 'Bus Network', icon: '🚌', status: alerts.filter(a => a.affected_modes?.includes('bus')).length > 0 ? 'delays' : 'normal' },
+      { name: 'Train Services', icon: '🚆', status: alerts.filter(a => a.affected_modes?.includes('train')).length > 0 ? 'disrupted' : 'normal' },
+      { name: 'Ferry Services', icon: '⛴️', status: alerts.filter(a => a.affected_modes?.includes('ferry')).length > 0 ? 'delays' : 'normal' },
+      { name: 'Road Network', icon: '🚗', status: trafficIncidents.length > 2 ? 'congested' : trafficIncidents.length > 0 ? 'delays' : 'normal' }
+    ]
+    return modes
+  }, [alerts, trafficIncidents])
+
+  // Recent activity - stores last few actions
+  const [recentActivity, setRecentActivity] = useState(() => {
+    const saved = localStorage.getItem('atis_recent_activity')
+    return saved ? JSON.parse(saved) : []
+  })
+
+  const addActivity = (activity) => {
+    const newActivity = {
+      id: Date.now(),
+      timestamp: Date.now(),
+      ...activity
+    }
+    const updated = [newActivity, ...recentActivity].slice(0, 5)
+    setRecentActivity(updated)
+    localStorage.setItem('atis_recent_activity', JSON.stringify(updated))
+  }
+
+  // Quick shortcuts - saved places
+  const [quickShortcuts, setQuickShortcuts] = useState(() => {
+    const saved = localStorage.getItem('atis_shortcuts')
+    return saved ? JSON.parse(saved) : [
+      { id: 1, name: 'Home → Work', icon: '🏢', origin: [-36.8485, 174.7633], dest: [-36.8443, 174.7676] },
+      { id: 2, name: 'Home → Airport', icon: '✈️', origin: [-36.8485, 174.7633], dest: [-37.0082, 174.7850] }
+    ]
+  })
+
+  // Live departures state
+  const [liveDepartures, setLiveDepartures] = useState([])
+  const [departuresLoading, setDeparturesLoading] = useState(false)
+  const [expandedStops, setExpandedStops] = useState({})
+
+  // Fetch live departures for nearby stops
+  const fetchLiveDepartures = async () => {
+    if (stops.length === 0) return
+    
+    setDeparturesLoading(true)
+    try {
+      // Get departures from top 3 nearest stops
+      const topStops = stops.slice(0, 3)
+      const departurePromises = topStops.map(async (stop) => {
+        try {
+          const r = await fetch(`${API}/departures?stop_id=${stop.stop_id}`)
+          const data = await r.json()
+          return {
+            stopName: stop.stop_name,
+            stopId: stop.stop_id,
+            departures: (data.departures || []).slice(0, 3).map(dep => ({
+              ...dep,
+              fetchedAt: Date.now()
+            }))
+          }
+        } catch (err) {
+          return { stopName: stop.stop_name, stopId: stop.stop_id, departures: [] }
+        }
+      })
+      
+      const results = await Promise.all(departurePromises)
+      setLiveDepartures(results)
+    } catch (error) {
+      console.error('Failed to fetch live departures:', error)
+    } finally {
+      setDeparturesLoading(false)
+    }
+  }
+
+  // Auto-refresh departures every 30 seconds
+  useEffect(() => {
+    if (view === 'home' && stops.length > 0) {
+      fetchLiveDepartures()
+      const interval = setInterval(fetchLiveDepartures, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [view, stops])
+
+  // Calculate minutes until departure
+  const getMinutesUntil = (departureTime) => {
+    if (!departureTime) return null
+    const now = new Date()
+    const depTime = new Date(departureTime)
+    const diffMs = depTime - now
+    const diffMins = Math.floor(diffMs / 60000)
+    return diffMins
+  }
 
   // Check for existing session on mount and verify with backend
   useEffect(() => {
@@ -1463,8 +1704,8 @@ export default function App(){
     return () => clearTimeout(timeoutId)
   }, [origin[0], origin[1], isAuthenticated])
 
-  // Helper function to get relative time string
-  const getRelativeTime = (timestamp) => {
+  // Helper function to get relative time string - defined as function for hoisting
+  function getRelativeTime(timestamp) {
     const seconds = Math.floor((Date.now() - timestamp) / 1000)
     if (seconds < 10) return 'just now'
     if (seconds < 60) return `${seconds}s ago`
@@ -1483,11 +1724,10 @@ export default function App(){
       setTrafficIncidents(d.traffic||[])
       const now = Date.now()
       setLastTrafficUpdate(now)
-      toast('🔄 Traffic data updated!', 'success')
+      console.log('🔄 Traffic data updated!')
       return true
     } catch(err) {
       console.error('Failed to refresh traffic:', err)
-      toast('⚠️ Failed to update traffic data', 'error')
       return false
     }
   }
@@ -1564,18 +1804,7 @@ export default function App(){
     }
   }
 
-  const loadAnalytics = async () => {
-    if (!token) return
-    try {
-      const r = await fetch(`${API}/analytics/summary`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      const data = await r.json()
-      setAnalyticsData(data)
-    } catch (error) {
-      console.log('Failed to load analytics:', error)
-    }
-  }
+  // loadAnalytics function removed - Analytics feature disabled
 
   const exportPdf = async (itinerary) => {
     const r = await fetch(`${API}/export/itinerary`,{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ origin, destination: dest, itinerary }) })
@@ -1886,10 +2115,10 @@ export default function App(){
 
           {/* Navigation Tabs */}
           <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
-            {['home','plan','map','alerts','safety','reviews','analytics','settings'].map(v => (
+            {['home','plan','map','alerts','safety','reviews','settings'].map(v => (
               <button
                 key={v}
-                onClick={() => {setView(v); if(v === 'analytics') loadAnalytics();}}
+                onClick={() => setView(v)}
                 className={view === v ? 'btn btn-primary' : 'chip'}
                 style={{
                   padding:'8px 16px',
@@ -1901,7 +2130,7 @@ export default function App(){
               >
                 {v === 'home' && '🏠'} {v === 'plan' && '🗺️'} {v === 'map' && '🌍'}
                 {v === 'alerts' && '⚠️'} {v === 'safety' && '🛡️'} {v === 'reviews' && '⭐'}
-                {v === 'analytics' && '📊'} {v === 'settings' && '⚙️'} {' '}{v.charAt(0).toUpperCase() + v.slice(1)}
+                {v === 'settings' && '⚙️'} {' '}{v.charAt(0).toUpperCase() + v.slice(1)}
               </button>
             ))}
           </div>
@@ -1925,55 +2154,672 @@ export default function App(){
         {/* View-Based Content Rendering */}
         {view === 'home' && (
           <>
-            {/* Quick Stats Dashboard */}
-            <div className="grid-3" style={{marginBottom:32}}>
-              <div className="stat-card">
-                <div className="stat-value">{stops.length}</div>
-                <div className="stat-label">Nearby Stops</div>
+            {/* Hero Section with Greeting & Time */}
+            <div style={{marginBottom:40}}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:16, marginBottom:24}}>
+                <div>
+                  <h1 style={{fontSize:36, fontWeight:800, marginBottom:8, background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent'}}>
+                    {greeting}, {username}! 👋
+                  </h1>
+                  <p style={{fontSize:16, color:'rgba(148,163,184,0.9)', fontWeight:500}}>
+                    {formattedDateTime}
+                  </p>
+                </div>
+                {topAlert && (
+                  <div style={{
+                    background:'linear-gradient(135deg, rgba(239,68,68,0.15) 0%, rgba(251,191,36,0.15) 100%)',
+                    border:'1px solid rgba(239,68,68,0.4)',
+                    borderRadius:16,
+                    padding:'12px 20px',
+                    display:'flex',
+                    alignItems:'center',
+                    gap:12,
+                    maxWidth:400,
+                    boxShadow:'0 8px 24px rgba(239,68,68,0.2)'
+                  }}>
+                    <div style={{fontSize:24}}>🚨</div>
+                    <div>
+                      <div style={{fontSize:13, fontWeight:700, marginBottom:2}}>{topAlert.title || topAlert.summary || 'Active disruption'}</div>
+                      <div style={{fontSize:11, color:'rgba(239,68,68,0.9)', fontWeight:600}}>{topAlertStatus}</div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="stat-card">
-                <div className="stat-value">{itins.length}</div>
-                <div className="stat-label">Routes Found</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">{alerts.length}</div>
-                <div className="stat-label">Active Alerts</div>
+
+              {/* Enhanced Metrics Grid */}
+              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(240px, 1fr))', gap:20}}>
+                {homeMetrics.map((metric, idx) => {
+                  // Determine click action based on metric type
+                  let clickAction = null
+                  let actionLabel = null
+                  
+                  if (metric.label === 'Nearby stops') {
+                    clickAction = () => setView('map')
+                    actionLabel = 'View on map'
+                  } else if (metric.label === 'Routes planned') {
+                    clickAction = () => setView('plan')
+                    actionLabel = 'Plan new trip'
+                  } else if (metric.label === 'Active alerts') {
+                    clickAction = () => setView('alerts')
+                    actionLabel = 'View details'
+                  } else if (metric.label === 'Traffic refresh') {
+                    clickAction = refreshTrafficData
+                    actionLabel = 'Refresh now'
+                  }
+                  
+                  const isClickable = clickAction !== null
+                  
+                  return (
+                    <div
+                      key={idx}
+                      onClick={clickAction}
+                      style={{
+                        background:'linear-gradient(135deg, rgba(15,23,42,0.6) 0%, rgba(30,41,59,0.4) 100%)',
+                        border:'1px solid rgba(148,163,184,0.2)',
+                        borderRadius:20,
+                        padding:'24px 20px',
+                        backdropFilter:'blur(12px)',
+                        boxShadow:'0 8px 32px rgba(0,0,0,0.12)',
+                        transition:'all 0.3s ease',
+                        cursor:isClickable ? 'pointer' : 'default',
+                        position:'relative',
+                        overflow:'hidden'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (isClickable) {
+                          e.currentTarget.style.transform = 'translateY(-4px)'
+                          e.currentTarget.style.boxShadow = '0 12px 40px rgba(102,126,234,0.25)'
+                          e.currentTarget.style.borderColor = 'rgba(102,126,234,0.5)'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)'
+                        e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.12)'
+                        e.currentTarget.style.borderColor = 'rgba(148,163,184,0.2)'
+                      }}
+                    >
+                      <div style={{
+                        position:'absolute',
+                        top:-20,
+                        right:-20,
+                        fontSize:80,
+                        opacity:0.08,
+                        transform:'rotate(15deg)',
+                        pointerEvents:'none'
+                      }}>{metric.icon}</div>
+                      <div style={{position:'relative', zIndex:1}}>
+                        <div style={{fontSize:28, marginBottom:8}}>{metric.icon}</div>
+                        <div style={{fontSize:32, fontWeight:800, marginBottom:6, color:'#fff'}}>{metric.value}</div>
+                        <div style={{fontSize:13, fontWeight:600, color:'rgba(148,163,184,0.95)', marginBottom:4}}>{metric.label}</div>
+                        <div style={{fontSize:11, color:'rgba(148,163,184,0.7)', fontStyle:'italic'}}>{metric.meta}</div>
+                        {isClickable && (
+                          <div style={{
+                            marginTop:12,
+                            fontSize:11,
+                            fontWeight:600,
+                            color:'rgba(102,126,234,0.9)',
+                            display:'flex',
+                            alignItems:'center',
+                            gap:4
+                          }}>
+                            {actionLabel} <span style={{fontSize:14}}>→</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
 
-            {/* Welcome Card */}
-            <div className="card" style={{marginBottom:32, background:'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)', border:'1px solid rgba(102, 126, 234, 0.3)'}}>
-              <h2 style={{fontSize:28, fontWeight:800, marginBottom:12, background:'var(--gradient-1)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent'}}>
-                Welcome back, {username}! 👋
-              </h2>
-              <p style={{color:'var(--muted)', fontSize:15}}>
-                Your intelligent travel companion for smarter journeys. Plan trips, check real-time updates, and navigate with confidence.
-              </p>
+            {/* Real-Time Dashboard Sections */}
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:24, marginBottom:32}}>
+              
+              {/* Transit System Status */}
+              <div style={{
+                background:'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(15,23,42,0.4) 100%)',
+                border:'1px solid rgba(16,185,129,0.3)',
+                borderRadius:20,
+                padding:'24px',
+                backdropFilter:'blur(12px)',
+                boxShadow:'0 8px 32px rgba(0,0,0,0.12)'
+              }}>
+                <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:20}}>
+                  <div style={{fontSize:28}}>🚦</div>
+                  <div>
+                    <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Transit System Status</h3>
+                    <p style={{fontSize:12, color:'rgba(148,163,184,0.9)'}}>Live service monitoring</p>
+                  </div>
+                </div>
+                <div style={{display:'flex', flexDirection:'column', gap:12}}>
+                  {transitStatus.map((mode, idx) => {
+                    const statusConfig = {
+                      normal: { color: '#10b981', bg: 'rgba(16,185,129,0.15)', label: 'Normal' },
+                      delays: { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', label: 'Delays' },
+                      disrupted: { color: '#ef4444', bg: 'rgba(239,68,68,0.15)', label: 'Disrupted' },
+                      congested: { color: '#f97316', bg: 'rgba(249,115,22,0.15)', label: 'Congested' }
+                    }
+                    const config = statusConfig[mode.status] || statusConfig.normal
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          display:'flex',
+                          justifyContent:'space-between',
+                          alignItems:'center',
+                          padding:'12px 16px',
+                          background:'rgba(255,255,255,0.05)',
+                          border:'1px solid rgba(255,255,255,0.1)',
+                          borderRadius:12,
+                          transition:'all 0.3s'
+                        }}
+                      >
+                        <div style={{display:'flex', alignItems:'center', gap:10}}>
+                          <div style={{fontSize:22}}>{mode.icon}</div>
+                          <div style={{fontSize:14, fontWeight:600}}>{mode.name}</div>
+                        </div>
+                        <div style={{
+                          padding:'4px 12px',
+                          borderRadius:999,
+                          background:config.bg,
+                          border:`1px solid ${config.color}`,
+                          color:config.color,
+                          fontSize:11,
+                          fontWeight:700,
+                          textTransform:'uppercase'
+                        }}>
+                          {config.label}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Weather Widget */}
+              <div style={{
+                background:'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(15,23,42,0.4) 100%)',
+                border:'1px solid rgba(59,130,246,0.3)',
+                borderRadius:20,
+                padding:'24px',
+                backdropFilter:'blur(12px)',
+                boxShadow:'0 8px 32px rgba(0,0,0,0.12)'
+              }}>
+                <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:20}}>
+                  <div style={{fontSize:28}}>🌤️</div>
+                  <div>
+                    <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Current Weather</h3>
+                    <p style={{fontSize:12, color:'rgba(148,163,184,0.9)'}}>Auckland CBD conditions</p>
+                  </div>
+                </div>
+                {weather ? (
+                  <div>
+                    <div style={{display:'flex', alignItems:'center', gap:20, marginBottom:16}}>
+                      <div style={{fontSize:64}}>
+                        {weather.condition.toLowerCase().includes('rain') ? '🌧️' :
+                         weather.condition.toLowerCase().includes('cloud') ? '☁️' :
+                         weather.condition.toLowerCase().includes('sun') ? '☀️' : '🌤️'}
+                      </div>
+                      <div>
+                        <div style={{fontSize:48, fontWeight:800}}>{weather.tempC}°C</div>
+                        <div style={{fontSize:14, color:'rgba(148,163,184,0.9)', marginTop:4}}>{weather.condition}</div>
+                      </div>
+                    </div>
+                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
+                      <div style={{padding:'12px', background:'rgba(255,255,255,0.05)', borderRadius:10}}>
+                        <div style={{fontSize:11, color:'rgba(148,163,184,0.8)', marginBottom:4}}>Wind Speed</div>
+                        <div style={{fontSize:18, fontWeight:700}}>💨 {weather.windKph} km/h</div>
+                      </div>
+                      <div style={{padding:'12px', background:'rgba(255,255,255,0.05)', borderRadius:10}}>
+                        <div style={{fontSize:11, color:'rgba(148,163,184,0.8)', marginBottom:4}}>Humidity</div>
+                        <div style={{fontSize:18, fontWeight:700}}>💧 {weather.humidity || 65}%</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{textAlign:'center', padding:'40px 0', color:'rgba(148,163,184,0.7)'}}>
+                    <div style={{fontSize:48, marginBottom:12}}>⏳</div>
+                    <div style={{fontSize:14}}>Loading weather data...</div>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Feature Overview Grid */}
-            <div className="grid-2" style={{marginBottom:32}}>
-              <div className="card" onClick={() => setView('plan')} style={{cursor:'pointer'}}>
-                <div style={{fontSize:48, marginBottom:16}}>🗺️</div>
-                <h3 style={{fontSize:20, fontWeight:700, marginBottom:8}}>Trip Planning</h3>
-                <p style={{color:'var(--muted)', fontSize:14}}>Plan multi-modal journeys with real-time data and alternative routes</p>
+            {/* Live Departure Board - Full Width */}
+            <div style={{
+              background:'linear-gradient(135deg, rgba(245,158,11,0.12) 0%, rgba(15,23,42,0.4) 100%)',
+              border:'1px solid rgba(245,158,11,0.3)',
+              borderRadius:20,
+              padding:'24px',
+              backdropFilter:'blur(12px)',
+              boxShadow:'0 8px 32px rgba(0,0,0,0.12)',
+              marginBottom:32
+            }}>
+              <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
+                <div style={{display:'flex', alignItems:'center', gap:12}}>
+                  <div style={{fontSize:28}}>🚏</div>
+                  <div>
+                    <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Live Departure Board</h3>
+                    <p style={{fontSize:12, color:'rgba(148,163,184,0.9)'}}>Next departures from nearby stops</p>
+                  </div>
+                </div>
+                <div style={{display:'flex', alignItems:'center', gap:12}}>
+                  <div style={{
+                    padding:'6px 12px',
+                    background:'rgba(16,185,129,0.2)',
+                    border:'1px solid rgba(16,185,129,0.4)',
+                    borderRadius:8,
+                    fontSize:11,
+                    fontWeight:600,
+                    color:'#10b981',
+                    display:'flex',
+                    alignItems:'center',
+                    gap:6
+                  }}>
+                    <span style={{
+                      width:6,
+                      height:6,
+                      borderRadius:'50%',
+                      background:'#10b981',
+                      animation:'pulse 2s infinite'
+                    }}></span>
+                    LIVE
+                  </div>
+                  <button
+                    onClick={fetchLiveDepartures}
+                    disabled={departuresLoading}
+                    style={{
+                      padding:'6px 12px',
+                      background:'rgba(245,158,11,0.2)',
+                      border:'1px solid rgba(245,158,11,0.4)',
+                      borderRadius:8,
+                      color:'#f59e0b',
+                      fontSize:11,
+                      fontWeight:600,
+                      cursor:departuresLoading ? 'not-allowed' : 'pointer',
+                      opacity:departuresLoading ? 0.5 : 1
+                    }}
+                  >
+                    {departuresLoading ? '⏳ Refreshing...' : '🔄 Refresh'}
+                  </button>
+                </div>
               </div>
-              <div className="card" onClick={() => setView('map')} style={{cursor:'pointer'}}>
-                <div style={{fontSize:48, marginBottom:16}}>🌍</div>
-                <h3 style={{fontSize:20, fontWeight:700, marginBottom:8}}>Interactive Map</h3>
-                <p style={{color:'var(--muted)', fontSize:14}}>Explore nearby stops, set destinations, and visualize your route</p>
+
+              {departuresLoading && liveDepartures.length === 0 ? (
+                <div style={{textAlign:'center', padding:'40px 0', color:'rgba(148,163,184,0.7)'}}>
+                  <div style={{fontSize:48, marginBottom:12}}>🔄</div>
+                  <div style={{fontSize:14}}>Loading live departures...</div>
+                </div>
+              ) : liveDepartures.length === 0 ? (
+                <div style={{textAlign:'center', padding:'40px 0', color:'rgba(148,163,184,0.7)'}}>
+                  <div style={{fontSize:48, marginBottom:12}}>🚏</div>
+                  <div style={{fontSize:14}}>No nearby stops found</div>
+                  <div style={{fontSize:12, marginTop:4}}>Try viewing the map to find transit stops</div>
+                </div>
+              ) : (
+                <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(360px, 1fr))', gap:16}}>
+                  {liveDepartures.map((stopData, idx) => {
+                    const isExpanded = expandedStops[stopData.stopId]
+                    const displayDeps = isExpanded ? stopData.departures : stopData.departures.slice(0, 3)
+                    
+                    const getOccupancyInfo = (occupancy) => {
+                      const info = {
+                        many_seats: { icon: '💺', label: 'Many seats', color: '#10b981' },
+                        seats_available: { icon: '🪑', label: 'Seats available', color: '#3b82f6' },
+                        standing_room: { icon: '🧍', label: 'Standing room', color: '#f59e0b' },
+                        crowded: { icon: '👥', label: 'Crowded', color: '#ef4444' }
+                      }
+                      return info[occupancy] || info.seats_available
+                    }
+                    
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          background:'rgba(255,255,255,0.05)',
+                          border:'1px solid rgba(255,255,255,0.15)',
+                          borderRadius:16,
+                          padding:'16px',
+                          transition:'all 0.3s',
+                          cursor:'pointer'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+                          e.currentTarget.style.borderColor = 'rgba(245,158,11,0.4)'
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+                          e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'
+                        }}
+                      >
+                        <div
+                          onClick={() => setExpandedStops(prev => ({...prev, [stopData.stopId]: !prev[stopData.stopId]}))}
+                          style={{
+                            fontSize:14,
+                            fontWeight:700,
+                            marginBottom:12,
+                            paddingBottom:10,
+                            borderBottom:'1px solid rgba(255,255,255,0.1)',
+                            display:'flex',
+                            alignItems:'center',
+                            justifyContent:'space-between',
+                            gap:8
+                          }}
+                        >
+                          <div style={{display:'flex', alignItems:'center', gap:8}}>
+                            <span style={{fontSize:18}}>📍</span>
+                            {stopData.stopName}
+                          </div>
+                          <div style={{display:'flex', alignItems:'center', gap:8}}>
+                            <div style={{fontSize:10, color:'rgba(148,163,184,0.8)', fontWeight:500}}>
+                              {stopData.departures.length} services
+                            </div>
+                            <span style={{fontSize:16, transition:'transform 0.3s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)'}}>
+                              ▼
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {stopData.departures.length === 0 ? (
+                          <div style={{textAlign:'center', padding:'20px 0', color:'rgba(148,163,184,0.6)', fontSize:12}}>
+                            No departures scheduled
+                          </div>
+                        ) : (
+                          <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                            {displayDeps.map((dep, depIdx) => {
+                              const minsUntil = getMinutesUntil(dep.departure_time)
+                              const isImmediate = minsUntil !== null && minsUntil <= 5
+                              const isDelayed = dep.delay_min && dep.delay_min > 2
+                              const occupancyInfo = getOccupancyInfo(dep.occupancy)
+                              
+                              return (
+                                <div
+                                  key={depIdx}
+                                  style={{
+                                    padding:'12px',
+                                    background:isImmediate ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.03)',
+                                    border:isImmediate ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(255,255,255,0.08)',
+                                    borderRadius:10,
+                                    animation:isImmediate ? 'pulse 2s infinite' : 'none'
+                                  }}
+                                >
+                                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8}}>
+                                    <div style={{flex:1}}>
+                                      <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
+                                        <div style={{
+                                          padding:'4px 10px',
+                                          background:'rgba(245,158,11,0.25)',
+                                          border:'1px solid rgba(245,158,11,0.5)',
+                                          borderRadius:8,
+                                          fontSize:12,
+                                          fontWeight:800,
+                                          color:'#f59e0b'
+                                        }}>
+                                          {dep.route || 'N/A'}
+                                        </div>
+                                        {dep.service_type === 'express' && (
+                                          <div style={{
+                                            padding:'2px 6px',
+                                            background:'rgba(139,92,246,0.2)',
+                                            border:'1px solid rgba(139,92,246,0.4)',
+                                            borderRadius:4,
+                                            fontSize:9,
+                                            fontWeight:700,
+                                            color:'#a78bfa',
+                                            textTransform:'uppercase'
+                                          }}>
+                                            Express
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div style={{fontSize:14, fontWeight:600, marginBottom:4}}>
+                                        → {dep.headsign || 'Unknown destination'}
+                                      </div>
+                                      {isExpanded && (
+                                        <div style={{fontSize:11, color:'rgba(148,163,184,0.8)', marginTop:4, display:'flex', flexDirection:'column', gap:3}}>
+                                          <div>🚏 {dep.platform || 'Platform TBA'}</div>
+                                          <div>🚌 {dep.vehicle_type || 'Standard'}</div>
+                                          <div style={{display:'flex', alignItems:'center', gap:4}}>
+                                            <span>{occupancyInfo.icon}</span>
+                                            <span style={{color:occupancyInfo.color}}>{occupancyInfo.label}</span>
+                                          </div>
+                                          {dep.accessible && <div>♿ Wheelchair accessible</div>}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div style={{textAlign:'right'}}>
+                                      {minsUntil !== null ? (
+                                        <>
+                                          <div style={{
+                                            fontSize:minsUntil <= 5 ? 22 : 20,
+                                            fontWeight:800,
+                                            color:minsUntil <= 2 ? '#ef4444' : minsUntil <= 5 ? '#f59e0b' : '#fff'
+                                          }}>
+                                            {minsUntil <= 0 ? 'NOW' : `${minsUntil}m`}
+                                          </div>
+                                          <div style={{fontSize:10, color:'rgba(148,163,184,0.7)', marginTop:2}}>
+                                            {new Date(dep.departure_time).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <div style={{fontSize:13, color:'rgba(148,163,184,0.8)'}}>
+                                          {dep.departure_time ? new Date(dep.departure_time).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : 'N/A'}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {isDelayed && (
+                                    <div style={{
+                                      fontSize:10,
+                                      color:'#ef4444',
+                                      fontWeight:600,
+                                      padding:'4px 8px',
+                                      background:'rgba(239,68,68,0.1)',
+                                      borderRadius:6,
+                                      marginTop:6
+                                    }}>
+                                      ⚠️ Delayed {dep.delay_min} min · Scheduled {new Date(dep.scheduled_time).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}
+                                    </div>
+                                  )}
+                                  {isExpanded && dep.realtime && (
+                                    <div style={{
+                                      fontSize:9,
+                                      color:'rgba(16,185,129,0.9)',
+                                      fontWeight:600,
+                                      marginTop:6,
+                                      display:'flex',
+                                      alignItems:'center',
+                                      gap:4
+                                    }}>
+                                      <span style={{
+                                        width:6,
+                                        height:6,
+                                        borderRadius:'50%',
+                                        background:'#10b981',
+                                        animation:'pulse 2s infinite'
+                                      }}></span>
+                                      REAL-TIME DATA
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                            {!isExpanded && stopData.departures.length > 3 && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setExpandedStops(prev => ({...prev, [stopData.stopId]: true}))
+                                }}
+                                style={{
+                                  padding:'8px',
+                                  background:'rgba(245,158,11,0.15)',
+                                  border:'1px solid rgba(245,158,11,0.3)',
+                                  borderRadius:8,
+                                  color:'#f59e0b',
+                                  fontSize:11,
+                                  fontWeight:600,
+                                  cursor:'pointer',
+                                  transition:'all 0.3s'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = 'rgba(245,158,11,0.25)'
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'rgba(245,158,11,0.15)'
+                                }}
+                              >
+                                Show {stopData.departures.length - 3} more departures ↓
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Second Row: Quick Shortcuts & Recent Activity */}
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:24}}>
+              
+              {/* Quick Trip Shortcuts */}
+              <div style={{
+                background:'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(15,23,42,0.4) 100%)',
+                border:'1px solid rgba(139,92,246,0.3)',
+                borderRadius:20,
+                padding:'24px',
+                backdropFilter:'blur(12px)',
+                boxShadow:'0 8px 32px rgba(0,0,0,0.12)'
+              }}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
+                  <div style={{display:'flex', alignItems:'center', gap:12}}>
+                    <div style={{fontSize:28}}>⚡</div>
+                    <div>
+                      <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Quick Shortcuts</h3>
+                      <p style={{fontSize:12, color:'rgba(148,163,184,0.9)'}}>Your saved routes</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setView('plan')}
+                    style={{
+                      padding:'6px 12px',
+                      background:'rgba(139,92,246,0.2)',
+                      border:'1px solid rgba(139,92,246,0.4)',
+                      borderRadius:8,
+                      color:'#a78bfa',
+                      fontSize:11,
+                      fontWeight:600,
+                      cursor:'pointer'
+                    }}
+                  >
+                    + Add
+                  </button>
+                </div>
+                <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                  {quickShortcuts.length > 0 ? quickShortcuts.map((shortcut) => (
+                    <button
+                      key={shortcut.id}
+                      onClick={() => {
+                        setOrigin(shortcut.origin)
+                        setDest(shortcut.dest)
+                        setView('plan')
+                        addActivity({ type: 'shortcut', name: shortcut.name })
+                      }}
+                      style={{
+                        display:'flex',
+                        alignItems:'center',
+                        gap:12,
+                        padding:'14px 16px',
+                        background:'rgba(255,255,255,0.05)',
+                        border:'1px solid rgba(255,255,255,0.1)',
+                        borderRadius:12,
+                        cursor:'pointer',
+                        transition:'all 0.3s',
+                        textAlign:'left',
+                        color:'#fff'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(139,92,246,0.2)'
+                        e.currentTarget.style.borderColor = 'rgba(139,92,246,0.5)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+                      }}
+                    >
+                      <div style={{fontSize:28}}>{shortcut.icon}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:14, fontWeight:600}}>{shortcut.name}</div>
+                        <div style={{fontSize:11, color:'rgba(148,163,184,0.8)', marginTop:2}}>Tap to plan route</div>
+                      </div>
+                      <div style={{fontSize:20, opacity:0.6}}>→</div>
+                    </button>
+                  )) : (
+                    <div style={{textAlign:'center', padding:'30px 0', color:'rgba(148,163,184,0.7)'}}>
+                      <div style={{fontSize:36, marginBottom:8}}>📍</div>
+                      <div style={{fontSize:13}}>No shortcuts saved yet</div>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="card" onClick={() => setView('alerts')} style={{cursor:'pointer'}}>
-                <div style={{fontSize:48, marginBottom:16}}>⚠️</div>
-                <h3 style={{fontSize:20, fontWeight:700, marginBottom:8}}>Live Alerts</h3>
-                <p style={{color:'var(--muted)', fontSize:14}}>Stay updated with traffic incidents and service disruptions</p>
-              </div>
-              <div className="card" onClick={() => setView('safety')} style={{cursor:'pointer'}}>
-                <div style={{fontSize:48, marginBottom:16}}>🛡️</div>
-                <h3 style={{fontSize:20, fontWeight:700, marginBottom:8}}>Safety Features</h3>
-                <p style={{color:'var(--muted)', fontSize:14}}>Emergency contacts and location sharing for peace of mind</p>
+
+              {/* Recent Activity */}
+              <div style={{
+                background:'linear-gradient(135deg, rgba(236,72,153,0.12) 0%, rgba(15,23,42,0.4) 100%)',
+                border:'1px solid rgba(236,72,153,0.3)',
+                borderRadius:20,
+                padding:'24px',
+                backdropFilter:'blur(12px)',
+                boxShadow:'0 8px 32px rgba(0,0,0,0.12)'
+              }}>
+                <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:20}}>
+                  <div style={{fontSize:28}}>📋</div>
+                  <div>
+                    <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Recent Activity</h3>
+                    <p style={{fontSize:12, color:'rgba(148,163,184,0.9)'}}>Your latest actions</p>
+                  </div>
+                </div>
+                <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                  {recentActivity.length > 0 ? recentActivity.map((activity) => {
+                    const activityIcons = {
+                      shortcut: '⚡',
+                      plan: '🗺️',
+                      view: '👀',
+                      export: '📄',
+                      alert: '⚠️'
+                    }
+                    return (
+                      <div
+                        key={activity.id}
+                        style={{
+                          padding:'12px 16px',
+                          background:'rgba(255,255,255,0.05)',
+                          border:'1px solid rgba(255,255,255,0.1)',
+                          borderRadius:12
+                        }}
+                      >
+                        <div style={{display:'flex', alignItems:'center', gap:10}}>
+                          <div style={{fontSize:20}}>{activityIcons[activity.type] || '📌'}</div>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:13, fontWeight:600}}>{activity.name}</div>
+                            <div style={{fontSize:11, color:'rgba(148,163,184,0.7)', marginTop:2}}>
+                              {getRelativeTime(activity.timestamp)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  }) : (
+                    <div style={{textAlign:'center', padding:'30px 0', color:'rgba(148,163,184,0.7)'}}>
+                      <div style={{fontSize:36, marginBottom:8}}>🕐</div>
+                      <div style={{fontSize:13}}>No recent activity</div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
+
           </>
         )}
 
@@ -3190,7 +4036,8 @@ export default function App(){
           </div>
         )}
 
-        {view === 'analytics' && (
+        {/* Analytics removed per user request */}
+        {false && view === 'analytics' && (
           <div>
             <h2 className="section-title">📊 System Analytics Dashboard</h2>
             <div style={{
