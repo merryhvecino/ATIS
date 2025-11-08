@@ -8,7 +8,9 @@ from .pdf import itinerary_pdf
 from .providers import Providers
 from .store import (nearby_stops, sample_departures, sample_itineraries,
                     sample_weather, sample_traffic, suggest_reroute, sample_alerts)
-from .auth import register_user, verify_user, issue_token, decode_token
+from .auth import (register_user, verify_user, issue_token, decode_token,
+                   is_mfa_enabled, verify_mfa_code, generate_qr_code, 
+                   enable_mfa, disable_mfa, get_mfa_secret)
 from .environmental import (calculate_itinerary_emissions, compare_modal_emissions, 
                             calculate_cumulative_impact)
 from .mcda import MCDAScorer, create_comparison_chart_data, customize_weights_for_profile
@@ -42,6 +44,7 @@ def health():
 class AuthReq(BaseModel):
     username: str
     password: str
+    mfa_code: Optional[str] = None
 
 @app.post("/auth/register")
 def auth_register(req: AuthReq):
@@ -49,14 +52,36 @@ def auth_register(req: AuthReq):
     if not ok:
         raise HTTPException(400, "Username already exists")
     token = issue_token(req.username)
-    return {"token": token, "username": req.username}
+    return {
+        "token": token, 
+        "username": req.username,
+        "mfa_enabled": False,
+        "message": "Registration successful. You can enable MFA in settings."
+    }
 
 @app.post("/auth/login")
 def auth_login(req: AuthReq):
+    # First verify username and password
     if not verify_user(req.username, req.password):
         raise HTTPException(401, "Invalid credentials")
+    
+    # Check if MFA is enabled
+    if is_mfa_enabled(req.username):
+        # MFA is enabled - require code
+        if not req.mfa_code:
+            raise HTTPException(403, "MFA code required")
+        
+        # Verify MFA code
+        if not verify_mfa_code(req.username, req.mfa_code):
+            raise HTTPException(401, "Invalid MFA code")
+    
+    # Login successful
     token = issue_token(req.username)
-    return {"token": token, "username": req.username}
+    return {
+        "token": token, 
+        "username": req.username,
+        "mfa_enabled": is_mfa_enabled(req.username)
+    }
 
 @app.post("/auth/verify")
 def auth_verify(authorization: str = Header(None)):
@@ -73,15 +98,72 @@ def auth_verify(authorization: str = Header(None)):
 
 @app.get("/me")
 def me(user: str = Depends(require_auth)):
-    return {"username": user}
+    return {
+        "username": user,
+        "mfa_enabled": is_mfa_enabled(user)
+    }
+
+# ---------- MFA Management ----------
+@app.get("/auth/mfa/setup")
+def mfa_setup(user: str = Depends(require_auth)):
+    """Get QR code for MFA setup"""
+    qr_code = generate_qr_code(user)
+    secret = get_mfa_secret(user)
+    
+    if not qr_code or not secret:
+        raise HTTPException(500, "Failed to generate MFA setup")
+    
+    return {
+        "qr_code": qr_code,
+        "secret": secret,  # Manual entry option
+        "enabled": is_mfa_enabled(user),
+        "instructions": "Scan QR code with Google Authenticator, Microsoft Authenticator, or Authy"
+    }
+
+class MFAVerifyReq(BaseModel):
+    code: str
+
+@app.post("/auth/mfa/enable")
+def mfa_enable(req: MFAVerifyReq, user: str = Depends(require_auth)):
+    """Enable MFA after verifying a test code"""
+    # Verify the code first to ensure setup was successful
+    if not verify_mfa_code(user, req.code):
+        raise HTTPException(400, "Invalid MFA code. Please try again.")
+    
+    enable_mfa(user)
+    return {
+        "success": True,
+        "message": "MFA enabled successfully! You'll need your authenticator app for future logins."
+    }
+
+@app.post("/auth/mfa/disable")
+def mfa_disable(req: MFAVerifyReq, user: str = Depends(require_auth)):
+    """Disable MFA after verifying current code"""
+    # Verify current code before disabling
+    if not verify_mfa_code(user, req.code):
+        raise HTTPException(400, "Invalid MFA code. Cannot disable MFA.")
+    
+    disable_mfa(user)
+    return {
+        "success": True,
+        "message": "MFA disabled successfully"
+    }
+
+@app.get("/auth/mfa/status")
+def mfa_status(user: str = Depends(require_auth)):
+    """Check MFA status"""
+    return {
+        "enabled": is_mfa_enabled(user),
+        "username": user
+    }
 
 # ---------- Stops & Departures ----------
 @app.get("/stops/nearby")
-def stops_nearby(lat: float, lng: float, radius: float = 900):
+def stops_nearby(lat: float, lng: float, radius: float = 900, user: str = Depends(require_auth)):
     return {"stops": nearby_stops(lat, lng, radius)}
 
 @app.get("/departures")
-def departures(stop_id: str):
+def departures(stop_id: str, user: str = Depends(require_auth)):
     prov = Providers()
     data = prov.departures(stop_id) if prov.USE_REAL else sample_departures(stop_id)
     return {"stop_id": stop_id, "departures": data}
@@ -99,7 +181,7 @@ class PlanRequest(BaseModel):
     modes: Optional[List[Literal["bus","train","ferry","walk","bike"]]] = ["bus","train","walk"]
 
 @app.post("/plan")
-def plan(req: PlanRequest, user: Optional[str] = None):
+def plan(req: PlanRequest, user: str = Depends(require_auth)):
     itins = sample_itineraries(
         req.origin, req.destination,
         prefers_fewer_transfers=(req.optimize=="fewest_transfers"),
@@ -132,7 +214,7 @@ class RerouteRequest(BaseModel):
     preferences: Optional[dict] = {}
 
 @app.post("/routes/suggest")
-def routes_suggest(req: RerouteRequest):
+def routes_suggest(req: RerouteRequest, user: str = Depends(require_auth)):
     prov = Providers()
     incidents = prov.incidents() if prov.USE_REAL else (req.incidents or [])
     alternative = suggest_reroute(req.current_itinerary, incidents)
@@ -195,13 +277,13 @@ def routes_suggest(req: RerouteRequest):
 
 # ---------- Alerts & Weather ----------
 @app.get("/alerts")
-def alerts(bbox: Optional[str] = None):
+def alerts(bbox: Optional[str] = None, user: str = Depends(require_auth)):
     prov = Providers()
     traffic = prov.incidents() if prov.USE_REAL else sample_traffic(bbox or '174.70,-36.88,174.80,-36.80')
     return {"alerts": sample_alerts(), "traffic": traffic}
 
 @app.get("/weather/point")
-def weather_point(lat: float, lng: float):
+def weather_point(lat: float, lng: float, user: str = Depends(require_auth)):
     prov = Providers()
     data = prov.weather(lat, lng) if prov.USE_REAL else sample_weather([lat, lng], raw=True)
     return {"lat": lat, "lng": lng, "forecast": data}
@@ -256,7 +338,7 @@ def save_prefs(p: Prefs, user: str = Depends(require_auth)):
 
 # ---------- Environmental Analysis ----------
 @app.post("/environmental/compare")
-def environmental_compare(req: PlanRequest):
+def environmental_compare(req: PlanRequest, user: str = Depends(require_auth)):
     """Compare environmental impact of different routes"""
     itins = sample_itineraries(
         req.origin, req.destination,
@@ -276,7 +358,7 @@ def environmental_compare(req: PlanRequest):
     return comparison
 
 @app.get("/environmental/impact")
-def environmental_impact():
+def environmental_impact(user: str = Depends(require_auth)):
     """Get cumulative environmental impact from analytics"""
     analytics = get_analytics()
     return analytics.get_environmental_impact()
@@ -288,7 +370,7 @@ class MCDARequest(BaseModel):
     profile: Optional[str] = None  # 'commuter', 'budget', 'eco', etc.
 
 @app.post("/mcda/score")
-def mcda_score(req: MCDARequest):
+def mcda_score(req: MCDARequest, user: str = Depends(require_auth)):
     """Score itineraries using MCDA with custom weights"""
     weights = req.weights
     
@@ -382,7 +464,7 @@ class ExportRequest(BaseModel):
     itinerary: dict
 
 @app.post("/export/itinerary")
-def export_itinerary(req: ExportRequest):
+def export_itinerary(req: ExportRequest, user: str = Depends(require_auth)):
     buf = io.BytesIO()
     itinerary_pdf(buf, req.origin, req.destination, req.itinerary)
     pdf_bytes = buf.getvalue()

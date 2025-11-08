@@ -1055,10 +1055,12 @@ function LoginPage({onLogin, isVerifying}){
   const [user, setUser] = useState('')
   const [pass, setPass] = useState('')
   const [email, setEmail] = useState('')
+  const [mfaCode, setMfaCode] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [strength, setStrength] = useState(0)
+  const [requiresMfa, setRequiresMfa] = useState(false)
 
   useEffect(() => {
     if (mode === 'register' && pass) {
@@ -1099,11 +1101,17 @@ function LoginPage({onLogin, isVerifying}){
       }
     }
     
+    // If MFA is required but code not provided
+    if (requiresMfa && !mfaCode) {
+      setError('Please enter your 6-digit MFA code')
+      return
+    }
+    
     setLoading(true)
     try{
       const payload = mode === 'register' 
         ? {username: user, password: pass, email: email}
-        : {username: user, password: pass}
+        : {username: user, password: pass, mfa_code: mfaCode || null}
       
       const r = await fetch(`${API}/auth/${mode}`, { 
         method:'POST', 
@@ -1111,6 +1119,15 @@ function LoginPage({onLogin, isVerifying}){
         body: JSON.stringify(payload) 
       })
       const d = await r.json()
+      
+      // Check if MFA is required
+      if (r.status === 403 && d.detail === 'MFA code required') {
+        setRequiresMfa(true)
+        setError('🔐 MFA enabled on this account. Please enter your 6-digit code from your authenticator app.')
+        setLoading(false)
+        return
+      }
+      
       if (!r.ok) throw new Error(d.detail || 'Authentication failed')
       
       localStorage.setItem('atis_token', d.token)
@@ -1239,6 +1256,44 @@ function LoginPage({onLogin, isVerifying}){
               )}
             </div>
 
+            {/* MFA Code Input (shown only when MFA is required) */}
+            {requiresMfa && mode === 'login' && (
+              <div>
+                <label style={{display:'block', marginBottom:8, fontSize:13, fontWeight:600, color:'var(--muted)'}}>
+                  🔐 Authenticator Code
+                </label>
+                <input 
+                  type="text"
+                  placeholder="Enter 6-digit code" 
+                  value={mfaCode} 
+                  onChange={e=>setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  style={{
+                    width:'100%',
+                    textAlign:'center',
+                    fontSize:20,
+                    letterSpacing:8,
+                    fontWeight:700,
+                    fontFamily:'monospace'
+                  }}
+                  autoComplete="off"
+                  disabled={loading}
+                  maxLength={6}
+                  required
+                />
+                <div style={{
+                  marginTop:8,
+                  padding:10,
+                  background:'rgba(59,130,246,0.1)',
+                  border:'1px solid rgba(59,130,246,0.3)',
+                  borderRadius:8,
+                  fontSize:11,
+                  color:'rgba(148,163,184,0.9)'
+                }}>
+                  💡 Open your authenticator app (Google Authenticator, Microsoft Authenticator, or Authy) and enter the 6-digit code shown for ATIS Transport.
+                </div>
+              </div>
+            )}
+
             {error && (
               <div style={{padding:12, background:'rgba(239, 68, 68, 0.1)', border:'1px solid var(--danger)', borderRadius:12, color:'var(--danger)', fontSize:13, textAlign:'center'}}>
                 ⚠️ {error}
@@ -1326,6 +1381,15 @@ export default function App(){
   const [reviews, setReviews] = useState([])
   const [reviewLoc, setReviewLoc] = useState('')
   const [reviewRating, setReviewRating] = useState(5)
+  
+  // MFA States
+  const [mfaEnabled, setMfaEnabled] = useState(false)
+  const [mfaQrCode, setMfaQrCode] = useState(null)
+  const [mfaSecret, setMfaSecret] = useState(null)
+  const [mfaSetupCode, setMfaSetupCode] = useState('')
+  const [mfaLoading, setMfaLoading] = useState(false)
+  const [mfaError, setMfaError] = useState('')
+  const [mfaSuccess, setMfaSuccess] = useState('')
   const [reviewComment, setReviewComment] = useState('')
 
   // Location search states
@@ -1574,6 +1638,20 @@ export default function App(){
       return () => clearInterval(interval)
     }
   }, [view, stops])
+  
+  // Fetch MFA status when user is authenticated
+  useEffect(() => {
+    if (token && username) {
+      fetchMfaStatus()
+    }
+  }, [token, username])
+  
+  // Fetch MFA status when settings view is opened
+  useEffect(() => {
+    if (view === 'settings' && token) {
+      fetchMfaStatus()
+    }
+  }, [view, token])
 
   // Calculate minutes until departure
   const getMinutesUntil = (departureTime) => {
@@ -1885,6 +1963,93 @@ export default function App(){
     if (!r.ok){ const t = await r.json(); alert('Failed: '+(t.detail||r.status)) }
     setReviewLoc(''); setReviewRating(5); setReviewComment('')
     fetch(`${API}/reviews`).then(r=>r.json()).then(d=>setReviews(d.reviews||[])).catch(()=>{})
+  }
+  
+  // MFA Management Functions
+  const fetchMfaStatus = async () => {
+    try {
+      const r = await fetch(`${API}/auth/mfa/status`, { headers: authHeaders() })
+      if (r.ok) {
+        const d = await r.json()
+        setMfaEnabled(d.enabled)
+      }
+    } catch (e) {
+      console.error('Failed to fetch MFA status:', e)
+    }
+  }
+  
+  const startMfaSetup = async () => {
+    setMfaError('')
+    setMfaSuccess('')
+    setMfaLoading(true)
+    try {
+      const r = await fetch(`${API}/auth/mfa/setup`, { headers: authHeaders() })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.detail || 'Failed to setup MFA')
+      
+      setMfaQrCode(d.qr_code)
+      setMfaSecret(d.secret)
+      setMfaSuccess('Scan the QR code with your authenticator app!')
+    } catch (e) {
+      setMfaError(e.message)
+    } finally {
+      setMfaLoading(false)
+    }
+  }
+  
+  const enableMfa = async () => {
+    if (!mfaSetupCode || mfaSetupCode.length !== 6) {
+      setMfaError('Please enter a valid 6-digit code')
+      return
+    }
+    
+    setMfaError('')
+    setMfaSuccess('')
+    setMfaLoading(true)
+    try {
+      const r = await fetch(`${API}/auth/mfa/enable`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ code: mfaSetupCode })
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.detail || 'Invalid code')
+      
+      setMfaEnabled(true)
+      setMfaQrCode(null)
+      setMfaSecret(null)
+      setMfaSetupCode('')
+      setMfaSuccess('🎉 MFA enabled successfully! You\'ll need your authenticator app for future logins.')
+    } catch (e) {
+      setMfaError(e.message)
+    } finally {
+      setMfaLoading(false)
+    }
+  }
+  
+  const disableMfa = async () => {
+    const code = prompt('Enter your current 6-digit MFA code to disable:')
+    if (!code) return
+    
+    setMfaError('')
+    setMfaSuccess('')
+    setMfaLoading(true)
+    try {
+      const r = await fetch(`${API}/auth/mfa/disable`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ code })
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.detail || 'Invalid code')
+      
+      setMfaEnabled(false)
+      setMfaSuccess('MFA disabled successfully')
+    } catch (e) {
+      setMfaError(e.message)
+    } finally {
+      setMfaLoading(false)
+    }
   }
 
   const toggleMode = (m) => setModes(prev => prev.includes(m) ? prev.filter(x => x!==m) : [...prev, m])
@@ -3971,6 +4136,181 @@ export default function App(){
         {view === 'settings' && (
           <div>
             <h2 className="section-title">⚙️ Settings & Preferences</h2>
+            
+          {/* MFA Security Settings */}
+          <FeatureCard icon="🔐" title="Multi-Factor Authentication (MFA)" description="Add an extra layer of security to your account with TOTP authenticator apps.">
+            <div style={{display:'flex', flexDirection:'column', gap:20}}>
+              
+              {/* MFA Status */}
+              <div style={{
+                padding:16,
+                background: mfaEnabled ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+                border: `1px solid ${mfaEnabled ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                borderRadius:12,
+                display:'flex',
+                justifyContent:'space-between',
+                alignItems:'center',
+                flexWrap:'wrap',
+                gap:12
+              }}>
+                <div>
+                  <div style={{fontWeight:700, fontSize:16, marginBottom:4}}>
+                    {mfaEnabled ? '✅ MFA Enabled' : '⚠️ MFA Disabled'}
+                  </div>
+                  <div style={{fontSize:13, opacity:0.85}}>
+                    {mfaEnabled 
+                      ? 'Your account is protected with two-factor authentication' 
+                      : 'Enable MFA for enhanced security'}
+                  </div>
+                </div>
+                <button
+                  onClick={mfaEnabled ? disableMfa : startMfaSetup}
+                  className="btn"
+                  style={{
+                    background: mfaEnabled ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)',
+                    color: mfaEnabled ? '#ef4444' : '#10b981',
+                    border: `1px solid ${mfaEnabled ? 'rgba(239,68,68,0.4)' : 'rgba(16,185,129,0.4)'}`
+                  }}
+                  disabled={mfaLoading}
+                >
+                  {mfaLoading ? '⏳ Loading...' : (mfaEnabled ? 'Disable MFA' : 'Enable MFA')}
+                </button>
+              </div>
+
+              {/* MFA Setup (shown when starting setup) */}
+              {mfaQrCode && (
+                <div style={{
+                  padding:20,
+                  background:'rgba(255,255,255,0.05)',
+                  border:'1px solid rgba(148,163,184,0.2)',
+                  borderRadius:16
+                }}>
+                  <h3 style={{fontSize:16, fontWeight:700, marginBottom:16}}>📱 Setup Instructions</h3>
+                  
+                  <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:24, alignItems:'start'}}>
+                    {/* QR Code */}
+                    <div>
+                      <div style={{fontWeight:600, marginBottom:12}}>1. Scan QR Code</div>
+                      <div style={{
+                        background:'#fff',
+                        padding:16,
+                        borderRadius:12,
+                        display:'inline-block'
+                      }}>
+                        <img src={mfaQrCode} alt="MFA QR Code" style={{width:200, height:200, display:'block'}} />
+                      </div>
+                      <div style={{fontSize:11, opacity:0.7, marginTop:8}}>
+                        Open your authenticator app and scan this code
+                      </div>
+                    </div>
+
+                    {/* Manual Entry & Verification */}
+                    <div>
+                      <div style={{marginBottom:16}}>
+                        <div style={{fontWeight:600, marginBottom:8}}>2. Or Enter Manually</div>
+                        <div style={{
+                          padding:12,
+                          background:'rgba(0,0,0,0.3)',
+                          borderRadius:8,
+                          fontFamily:'monospace',
+                          fontSize:13,
+                          wordBreak:'break-all',
+                          userSelect:'all'
+                        }}>
+                          {mfaSecret}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{fontWeight:600, marginBottom:8}}>3. Enter Code to Verify</div>
+                        <input
+                          type="text"
+                          placeholder="Enter 6-digit code"
+                          value={mfaSetupCode}
+                          onChange={e => setMfaSetupCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                          style={{
+                            width:'100%',
+                            textAlign:'center',
+                            fontSize:20,
+                            letterSpacing:8,
+                            fontWeight:700,
+                            fontFamily:'monospace',
+                            marginBottom:12
+                          }}
+                          maxLength={6}
+                          disabled={mfaLoading}
+                        />
+                        <button
+                          onClick={enableMfa}
+                          className="btn btn-primary"
+                          style={{width:'100%'}}
+                          disabled={mfaLoading || mfaSetupCode.length !== 6}
+                        >
+                          {mfaLoading ? '⏳ Verifying...' : '✅ Enable MFA'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Supported Apps */}
+                  <div style={{
+                    marginTop:20,
+                    padding:12,
+                    background:'rgba(59,130,246,0.1)',
+                    border:'1px solid rgba(59,130,246,0.3)',
+                    borderRadius:8,
+                    fontSize:12
+                  }}>
+                    <div style={{fontWeight:600, marginBottom:6}}>✨ Supported Authenticator Apps:</div>
+                    <div style={{opacity:0.9}}>
+                      • Google Authenticator • Microsoft Authenticator • Authy • 1Password • Bitwarden
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Messages */}
+              {mfaError && (
+                <div style={{
+                  padding:12,
+                  background:'rgba(239,68,68,0.1)',
+                  border:'1px solid rgba(239,68,68,0.3)',
+                  borderRadius:8,
+                  color:'#ef4444',
+                  fontSize:13
+                }}>
+                  ⚠️ {mfaError}
+                </div>
+              )}
+              
+              {mfaSuccess && (
+                <div style={{
+                  padding:12,
+                  background:'rgba(16,185,129,0.1)',
+                  border:'1px solid rgba(16,185,129,0.3)',
+                  borderRadius:8,
+                  color:'#10b981',
+                  fontSize:13
+                }}>
+                  ✅ {mfaSuccess}
+                </div>
+              )}
+
+              {/* Info Section */}
+              {!mfaQrCode && (
+                <div style={{fontSize:13, opacity:0.8, lineHeight:1.6}}>
+                  <div style={{fontWeight:600, marginBottom:8}}>ℹ️ About MFA:</div>
+                  <ul style={{margin:0, paddingLeft:20}}>
+                    <li>Works 100% offline - no internet required after setup</li>
+                    <li>Uses TOTP (Time-based One-Time Password) standard</li>
+                    <li>Generates new 6-digit codes every 30 seconds</li>
+                    <li>Significantly improves account security</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+          </FeatureCard>
+
           <FeatureCard icon="🌍" title="Travel Toolkit" description="International tools for language, money, and bookings.">
             <div style={{display:'flex', flexWrap:'wrap', gap:20}}>
               <div style={{flex:'1 1 220px'}}>
