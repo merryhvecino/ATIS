@@ -24,6 +24,6 @@
     "pw": "10d24b931781d4fb401f48470e20ca08b51e4cd60cdaab5a5f95c08829ca39b9",
     "created": 1762585999,
     "mfa_secret": "6LDV2M2LERHBNPUVCONQ627SE76Y65ZR",
-    "mfa_enabled": true
+    "mfa_enabled": false
   }
 }
