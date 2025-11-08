@@ -1848,6 +1848,10 @@ export default function App(){
   }
 
   const plan = async () => {
+    if (!token) {
+      alert('Please login to plan trips.')
+      return
+    }
     const payload = {
       origin, destination: dest,
       depart_at: whenType === 'depart' ? whenValue : 'now',
@@ -1855,11 +1859,27 @@ export default function App(){
       optimize, max_walk_km: parseFloat(maxWalkKm),
       avoid_stairs: avoidStairs, bike_ok: bikeOk, modes,
     }
-    const r = await fetch(`${API}/plan`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
-    const d = await r.json()
-    setItins(d.itineraries || [])
-    setBanner(d.context?.weatherAlert || '')
-    setAlts({})
+    try {
+      const r = await fetch(`${API}/plan`, { 
+        method:'POST', 
+        headers:{
+          'Content-Type':'application/json',
+          ...authHeaders()
+        }, 
+        body: JSON.stringify(payload) 
+      })
+      if (!r.ok) {
+        const error = await r.json()
+        throw new Error(error.detail || 'Failed to plan trip')
+      }
+      const d = await r.json()
+      setItins(d.itineraries || [])
+      setBanner(d.context?.weatherAlert || '')
+      setAlts({})
+    } catch (error) {
+      console.error('Plan error:', error)
+      alert(error.message || 'Failed to plan trip. Please try again.')
+    }
   }
 
   const trackTrip = async (itinerary) => {
@@ -1885,17 +1905,43 @@ export default function App(){
   // loadAnalytics function removed - Analytics feature disabled
 
   const exportPdf = async (itinerary) => {
-    const r = await fetch(`${API}/export/itinerary`,{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ origin, destination: dest, itinerary }) })
-    const blob = await r.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = 'atis_trip.pdf'; a.click(); URL.revokeObjectURL(url)
+    if (!token) {
+      alert('Please login to export PDF.')
+      return
+    }
+    try {
+      const r = await fetch(`${API}/export/itinerary`, {
+        method:'POST', 
+        headers:{
+          'Content-Type':'application/json',
+          ...authHeaders()
+        }, 
+        body: JSON.stringify({ origin, destination: dest, itinerary }) 
+      })
+      if (!r.ok) {
+        throw new Error('Failed to export PDF')
+      }
+      const blob = await r.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a'); a.href = url; a.download = 'atis_trip.pdf'; a.click(); URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Export error:', error)
+      alert('Failed to export PDF. Please try again.')
+    }
   }
 
   const suggestAlt = async (itinerary) => {
+    if (!token) {
+      alert('Please login to suggest alternative routes.')
+      return
+    }
     try {
       const r = await fetch(`${API}/routes/suggest`, { 
         method:'POST', 
-        headers:{'Content-Type':'application/json'}, 
+        headers:{
+          'Content-Type':'application/json',
+          ...authHeaders()
+        }, 
         body: JSON.stringify({ 
           current_itinerary: itinerary, 
           incidents: alerts,
