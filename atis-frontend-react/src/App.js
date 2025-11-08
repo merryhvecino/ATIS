@@ -148,7 +148,7 @@ function FeatureCard({title, description, children, icon}){
         <div style={{display:'flex', alignItems:'center', gap:16, marginBottom:10}}>
           {icon && <div style={{fontSize:42, filter:'drop-shadow(0 4px 8px rgba(0,0,0,0.2))'}}>{icon}</div>}
           <div>
-            <div style={{fontSize:26, fontWeight:800, background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text', letterSpacing:'-0.5px'}}>{title}</div>
+            <div style={{fontSize:26, fontWeight:800, color:'#1a1a1a', fontWeight:800, letterSpacing:'-0.5px'}}>{title}</div>
             {description && <div style={{color:'var(--muted)', fontSize:15, marginTop:6, lineHeight:1.6}}>{description}</div>}
           </div>
         </div>
@@ -175,8 +175,8 @@ const ALERT_SEVERITY_STYLES = {
   high: { bg: 'rgba(239,68,68,0.15)', color: '#ef4444', label: 'High' },
   warning: { bg: 'rgba(251,191,36,0.18)', color: '#f59e0b', label: 'Warning' },
   moderate: { bg: 'rgba(249,115,22,0.18)', color: '#f97316', label: 'Moderate' },
-  info: { bg: 'rgba(59,130,246,0.18)', color: '#3b82f6', label: 'Info' },
-  planned: { bg: 'rgba(167,139,250,0.18)', color: '#8b5cf6', label: 'Planned' },
+  info: { bg: 'rgba(0,0,0,0.06)', color: '#666666', label: 'Info' },
+  planned: { bg: 'rgba(0,0,0,0.06)', color: '#666666', label: 'Planned' },
   low: { bg: 'rgba(16,185,129,0.18)', color: '#10b981', label: 'Low' }
 }
 
@@ -323,10 +323,10 @@ function RecenterButton({ position }) {
         minWidth: 200
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.background = '#3b82f6'
+        e.currentTarget.style.background = '#333333'
         e.currentTarget.style.color = 'white'
         e.currentTarget.style.transform = 'translateY(-2px)'
-        e.currentTarget.style.boxShadow = '0 4px 16px rgba(59, 130, 246, 0.4)'
+        e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.15)'
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.background = 'white'
@@ -530,7 +530,7 @@ function InteractiveMap({ origin, setOrigin, dest, setDest, stops, trafficIncide
           onClick={() => setShowTraffic(!showTraffic)}
           style={{
             padding: '10px 16px',
-            background: showTraffic ? '#3b82f6' : 'white',
+            background: showTraffic ? '#333333' : 'white',
             color: showTraffic ? 'white' : '#333',
             border: '2px solid rgba(0,0,0,0.2)',
             borderRadius: 8,
@@ -551,7 +551,7 @@ function InteractiveMap({ origin, setOrigin, dest, setDest, stops, trafficIncide
           onClick={() => setShowRoute(!showRoute)}
           style={{
             padding: '10px 16px',
-            background: showRoute ? '#3b82f6' : 'white',
+            background: showRoute ? '#333333' : 'white',
             color: showRoute ? 'white' : '#333',
             border: '2px solid rgba(0,0,0,0.2)',
             borderRadius: 8,
@@ -572,7 +572,7 @@ function InteractiveMap({ origin, setOrigin, dest, setDest, stops, trafficIncide
           onClick={() => setShowStops(!showStops)}
           style={{
             padding: '10px 16px',
-            background: showStops ? '#3b82f6' : 'white',
+            background: showStops ? '#333333' : 'white',
             color: showStops ? 'white' : '#333',
             border: '2px solid rgba(0,0,0,0.2)',
             borderRadius: 8,
@@ -629,8 +629,8 @@ function InteractiveMap({ origin, setOrigin, dest, setDest, stops, trafficIncide
             transition: 'all 0.2s'
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = '#3b82f6'
-            e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.3)'
+            e.currentTarget.style.borderColor = '#333333'
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.1)'
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.borderColor = 'rgba(0,0,0,0.2)'
@@ -656,7 +656,7 @@ function InteractiveMap({ origin, setOrigin, dest, setDest, stops, trafficIncide
           <Polyline
             positions={routeLine}
             pathOptions={{
-              color: '#3b82f6',
+              color: '#666666',
               weight: 4,
               opacity: 0.7,
               dashArray: '10, 10',
@@ -1026,10 +1026,10 @@ function AuthPanel({token, setToken, username, setUsername}){
               </button>
 
               <div style={{textAlign:'center'}}>
-                <button 
+                <button
                   type="button"
                   onClick={() => {setMode(mode === 'login' ? 'register' : 'login'); setError('')}}
-                  style={{background:'none', border:'none', color:'var(--primary)', cursor:'pointer', fontSize:14, fontWeight:600}}
+                  style={{background:'none', border:'none', color:'#1a1a1a', cursor:'pointer', fontSize:14, fontWeight:600}}
                   disabled={loading}
                 >
                   {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
@@ -1155,23 +1155,21 @@ function LoginPage({onLogin, isVerifying}){
   }
 
   return (
-    <div style={{minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20, position:'relative', overflow:'hidden', background:'#0a0e27'}}>
-      {/* Animated background gradient circles */}
-      <div style={{position:'absolute', top:'-10%', left:'-5%', width:'500px', height:'500px', background:'radial-gradient(circle, rgba(102, 126, 234, 0.3) 0%, transparent 70%)', filter:'blur(80px)', animation:'float 8s ease-in-out infinite'}}></div>
-      <div style={{position:'absolute', bottom:'-10%', right:'-5%', width:'500px', height:'500px', background:'radial-gradient(circle, rgba(139, 92, 246, 0.3) 0%, transparent 70%)', filter:'blur(80px)', animation:'float 10s ease-in-out infinite reverse'}}></div>
+    <div style={{minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', padding:20, position:'relative', overflow:'hidden', background:'#ffffff'}}>
+      {/* Animated background gradient circles - REMOVED FOR MINIMAL DESIGN */}
       
       <div style={{maxWidth:480, width:'100%', position:'relative', zIndex:1}}>
         {/* Logo and Welcome Section */}
         <div style={{textAlign:'center', marginBottom:40}}>
-          <img 
-            src="/atis-logo.jpg" 
-            alt="ATIS Logo" 
-            style={{width:120, height:120, margin:'0 auto 24px', filter:'drop-shadow(0 8px 24px rgba(0,0,0,0.3))', objectFit:'contain', borderRadius:24}}
+          <img
+            src="/atis-logo.jpg"
+            alt="ATIS Logo"
+            style={{width:160, height:160, margin:'0 auto 8px', objectFit:'contain', borderRadius:24}}
             onError={(e) => {
               e.target.style.display = 'none'
             }}
           />
-          <h1 style={{fontSize:42, fontWeight:900, marginBottom:12, background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', letterSpacing:'-1px'}}>
+          <h1 style={{fontSize:42, fontWeight:900, marginBottom:12, color:'#1a1a1a', letterSpacing:'-1px'}}>
             Welcome to ATIS
           </h1>
           <p style={{fontSize:16, color:'var(--muted)', marginBottom:8}}>Advanced Traveler Information System</p>
@@ -1284,7 +1282,7 @@ function LoginPage({onLogin, isVerifying}){
                   marginTop:8,
                   padding:10,
                   background:'rgba(59,130,246,0.1)',
-                  border:'1px solid rgba(59,130,246,0.3)',
+                  border:'1px solid rgba(0, 0, 0, 0.1)',
                   borderRadius:8,
                   fontSize:11,
                   color:'rgba(148,163,184,0.9)'
@@ -1310,10 +1308,10 @@ function LoginPage({onLogin, isVerifying}){
             </button>
 
             <div style={{textAlign:'center'}}>
-              <button 
+              <button
                 type="button"
                 onClick={() => {setMode(mode === 'login' ? 'register' : 'login'); setError('')}}
-                style={{background:'none', border:'none', color:'var(--primary)', cursor:'pointer', fontSize:14, fontWeight:600}}
+                style={{background:'none', border:'none', color:'#1a1a1a', cursor:'pointer', fontSize:14, fontWeight:600}}
                 disabled={loading}
               >
                 {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
@@ -2278,8 +2276,8 @@ export default function App(){
           <div style={{
             width:60,
             height:60,
-            border:'4px solid rgba(139, 92, 246, 0.3)',
-            borderTop:'4px solid #8b5cf6',
+            border:'4px solid rgba(0, 0, 0, 0.1)',
+            borderTop:'4px solid #333333',
             borderRadius:'50%',
             animation:'spin 1s linear infinite',
             margin:'0 auto 20px'
@@ -2297,11 +2295,11 @@ export default function App(){
   }
 
   return (
-    <div style={{minHeight:'100vh', padding:'0', background:'#0a0e27', willChange:'auto'}}>
+    <div style={{minHeight:'100vh', padding:'0', background:'#ffffff', willChange:'auto'}}>
       {/* Modern Top Navigation Bar */}
       <nav style={{
         position:'sticky', top:0, zIndex:1000,
-        background:'rgba(10, 14, 39, 0.95)', 
+        background:'rgba(255, 255, 255, 0.95)',
         borderBottom:'1px solid var(--glass-border)',
         boxShadow:'0 4px 24px rgba(0,0,0,0.1)'
       }}>
@@ -2311,7 +2309,7 @@ export default function App(){
             <img
               src="/atis-logo.jpg"
               alt="ATIS"
-              style={{width:48, height:48, borderRadius:12, objectFit:'contain', boxShadow:'0 4px 12px rgba(0,0,0,0.2)'}}
+              style={{width:48, height:48, borderRadius:12, objectFit:'contain'}}
               onError={(e) => {
                 e.target.style.display = 'none'
                 e.target.nextElementSibling.style.display = 'grid'
@@ -2369,10 +2367,10 @@ export default function App(){
             <div style={{marginBottom:40}}>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:16, marginBottom:24}}>
                 <div>
-                  <h1 style={{fontSize:36, fontWeight:800, marginBottom:8, background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent'}}>
+                  <h1 style={{fontSize:36, fontWeight:800, marginBottom:8, color:'#1a1a1a'}}>
                     {greeting}, {username}! 👋
                   </h1>
-                  <p style={{fontSize:16, color:'rgba(148,163,184,0.9)', fontWeight:500}}>
+                  <p style={{fontSize:16, color:'#666666', fontWeight:500}}>
                     {formattedDateTime}
                   </p>
                 </div>
@@ -2425,12 +2423,11 @@ export default function App(){
                       key={idx}
                       onClick={clickAction}
                       style={{
-                        background:'linear-gradient(135deg, rgba(15,23,42,0.6) 0%, rgba(30,41,59,0.4) 100%)',
-                        border:'1px solid rgba(148,163,184,0.2)',
+                        background:'rgba(0, 0, 0, 0.02)',
+                        border:'1px solid rgba(0, 0, 0, 0.08)',
                         borderRadius:20,
                         padding:'24px 20px',
-                        backdropFilter:'blur(12px)',
-                        boxShadow:'0 8px 32px rgba(0,0,0,0.12)',
+                        boxShadow:'0 2px 8px rgba(0,0,0,0.04)',
                         transition:'all 0.3s ease',
                         cursor:isClickable ? 'pointer' : 'default',
                         position:'relative',
@@ -2439,14 +2436,14 @@ export default function App(){
                       onMouseEnter={(e) => {
                         if (isClickable) {
                           e.currentTarget.style.transform = 'translateY(-4px)'
-                          e.currentTarget.style.boxShadow = '0 12px 40px rgba(102,126,234,0.25)'
-                          e.currentTarget.style.borderColor = 'rgba(102,126,234,0.5)'
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'
+                          e.currentTarget.style.borderColor = 'rgba(0, 0, 0, 0.15)'
                         }
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.transform = 'translateY(0)'
-                        e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.12)'
-                        e.currentTarget.style.borderColor = 'rgba(148,163,184,0.2)'
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)'
+                        e.currentTarget.style.borderColor = 'rgba(0, 0, 0, 0.08)'
                       }}
                     >
                       <div style={{
@@ -2460,15 +2457,15 @@ export default function App(){
                       }}>{metric.icon}</div>
                       <div style={{position:'relative', zIndex:1}}>
                         <div style={{fontSize:28, marginBottom:8}}>{metric.icon}</div>
-                        <div style={{fontSize:32, fontWeight:800, marginBottom:6, color:'#fff'}}>{metric.value}</div>
-                        <div style={{fontSize:13, fontWeight:600, color:'rgba(148,163,184,0.95)', marginBottom:4}}>{metric.label}</div>
-                        <div style={{fontSize:11, color:'rgba(148,163,184,0.7)', fontStyle:'italic'}}>{metric.meta}</div>
+                        <div style={{fontSize:32, fontWeight:800, marginBottom:6, color:'#1a1a1a'}}>{metric.value}</div>
+                        <div style={{fontSize:13, fontWeight:600, color:'#1a1a1a', marginBottom:4}}>{metric.label}</div>
+                        <div style={{fontSize:11, color:'#666666', fontStyle:'italic'}}>{metric.meta}</div>
                         {isClickable && (
                           <div style={{
                             marginTop:12,
                             fontSize:11,
                             fontWeight:600,
-                            color:'rgba(102,126,234,0.9)',
+                            color:'#1a1a1a',
                             display:'flex',
                             alignItems:'center',
                             gap:4
@@ -2488,18 +2485,17 @@ export default function App(){
               
               {/* Transit System Status */}
               <div style={{
-                background:'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(15,23,42,0.4) 100%)',
-                border:'1px solid rgba(16,185,129,0.3)',
+                background:'rgba(0, 0, 0, 0.02)',
+                border:'1px solid rgba(0, 0, 0, 0.08)',
                 borderRadius:20,
                 padding:'24px',
-                backdropFilter:'blur(12px)',
-                boxShadow:'0 8px 32px rgba(0,0,0,0.12)'
+                boxShadow:'0 2px 8px rgba(0,0,0,0.04)'
               }}>
                 <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:20}}>
                   <div style={{fontSize:28}}>🚦</div>
                   <div>
                     <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Transit System Status</h3>
-                    <p style={{fontSize:12, color:'rgba(148,163,184,0.9)'}}>Live service monitoring</p>
+                    <p style={{fontSize:12, color:'#666666'}}>Live service monitoring</p>
                   </div>
                 </div>
                 <div style={{display:'flex', flexDirection:'column', gap:12}}>
@@ -2549,18 +2545,17 @@ export default function App(){
 
               {/* Weather Widget */}
               <div style={{
-                background:'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(15,23,42,0.4) 100%)',
-                border:'1px solid rgba(59,130,246,0.3)',
+                background:'rgba(0, 0, 0, 0.02)',
+                border:'1px solid rgba(0, 0, 0, 0.08)',
                 borderRadius:20,
                 padding:'24px',
-                backdropFilter:'blur(12px)',
-                boxShadow:'0 8px 32px rgba(0,0,0,0.12)'
+                boxShadow:'0 2px 8px rgba(0,0,0,0.04)'
               }}>
                 <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:20}}>
                   <div style={{fontSize:28}}>🌤️</div>
                   <div>
                     <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Current Weather</h3>
-                    <p style={{fontSize:12, color:'rgba(148,163,184,0.9)'}}>Auckland CBD conditions</p>
+                    <p style={{fontSize:12, color:'#666666'}}>Auckland CBD conditions</p>
                   </div>
                 </div>
                 {weather ? (
@@ -2598,12 +2593,11 @@ export default function App(){
 
             {/* Live Departure Board - Full Width */}
             <div style={{
-              background:'linear-gradient(135deg, rgba(245,158,11,0.12) 0%, rgba(15,23,42,0.4) 100%)',
-              border:'1px solid rgba(245,158,11,0.3)',
+              background:'rgba(0, 0, 0, 0.02)',
+              border:'1px solid rgba(0, 0, 0, 0.08)',
               borderRadius:20,
               padding:'24px',
-              backdropFilter:'blur(12px)',
-              boxShadow:'0 8px 32px rgba(0,0,0,0.12)',
+              boxShadow:'0 2px 8px rgba(0,0,0,0.04)',
               marginBottom:32
             }}>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
@@ -2611,14 +2605,14 @@ export default function App(){
                   <div style={{fontSize:28}}>🚏</div>
                   <div>
                     <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Live Departure Board</h3>
-                    <p style={{fontSize:12, color:'rgba(148,163,184,0.9)'}}>Next departures from nearby stops</p>
+                    <p style={{fontSize:12, color:'#666666'}}>Next departures from nearby stops</p>
                   </div>
                 </div>
                 <div style={{display:'flex', alignItems:'center', gap:12}}>
                   <div style={{
                     padding:'6px 12px',
-                    background:'rgba(16,185,129,0.2)',
-                    border:'1px solid rgba(16,185,129,0.4)',
+                    background:'rgba(16,185,129,0.1)',
+                    border:'1px solid rgba(16,185,129,0.3)',
                     borderRadius:8,
                     fontSize:11,
                     fontWeight:600,
@@ -2657,12 +2651,12 @@ export default function App(){
               </div>
 
               {departuresLoading && liveDepartures.length === 0 ? (
-                <div style={{textAlign:'center', padding:'40px 0', color:'rgba(148,163,184,0.7)'}}>
+                <div style={{textAlign:'center', padding:'40px 0', color:'#666666'}}>
                   <div style={{fontSize:48, marginBottom:12}}>🔄</div>
                   <div style={{fontSize:14}}>Loading live departures...</div>
                 </div>
               ) : liveDepartures.length === 0 ? (
-                <div style={{textAlign:'center', padding:'40px 0', color:'rgba(148,163,184,0.7)'}}>
+                <div style={{textAlign:'center', padding:'40px 0', color:'#666666'}}>
                   <div style={{fontSize:48, marginBottom:12}}>🚏</div>
                   <div style={{fontSize:14}}>No nearby stops found</div>
                   <div style={{fontSize:12, marginTop:4}}>Try viewing the map to find transit stops</div>
@@ -2676,7 +2670,7 @@ export default function App(){
                     const getOccupancyInfo = (occupancy) => {
                       const info = {
                         many_seats: { icon: '💺', label: 'Many seats', color: '#10b981' },
-                        seats_available: { icon: '🪑', label: 'Seats available', color: '#3b82f6' },
+                        seats_available: { icon: '🪑', label: 'Seats available', color: '#666666' },
                         standing_room: { icon: '🧍', label: 'Standing room', color: '#f59e0b' },
                         crowded: { icon: '👥', label: 'Crowded', color: '#ef4444' }
                       }
@@ -2896,29 +2890,28 @@ export default function App(){
               
               {/* Quick Trip Shortcuts */}
               <div style={{
-                background:'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(15,23,42,0.4) 100%)',
-                border:'1px solid rgba(139,92,246,0.3)',
+                background:'rgba(0, 0, 0, 0.02)',
+                border:'1px solid rgba(0, 0, 0, 0.08)',
                 borderRadius:20,
                 padding:'24px',
-                backdropFilter:'blur(12px)',
-                boxShadow:'0 8px 32px rgba(0,0,0,0.12)'
+                boxShadow:'0 2px 8px rgba(0,0,0,0.04)'
               }}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20}}>
                   <div style={{display:'flex', alignItems:'center', gap:12}}>
                     <div style={{fontSize:28}}>⚡</div>
                     <div>
                       <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Quick Shortcuts</h3>
-                      <p style={{fontSize:12, color:'rgba(148,163,184,0.9)'}}>Your saved routes</p>
+                      <p style={{fontSize:12, color:'#666666'}}>Your saved routes</p>
                     </div>
                   </div>
                   <button
                     onClick={() => setView('plan')}
                     style={{
                       padding:'6px 12px',
-                      background:'rgba(139,92,246,0.2)',
-                      border:'1px solid rgba(139,92,246,0.4)',
+                      background:'rgba(0, 0, 0, 0.05)',
+                      border:'1px solid rgba(0, 0, 0, 0.15)',
                       borderRadius:8,
-                      color:'#a78bfa',
+                      color:'#1a1a1a',
                       fontSize:11,
                       fontWeight:600,
                       cursor:'pointer'
@@ -2942,32 +2935,32 @@ export default function App(){
                         alignItems:'center',
                         gap:12,
                         padding:'14px 16px',
-                        background:'rgba(255,255,255,0.05)',
-                        border:'1px solid rgba(255,255,255,0.1)',
+                        background:'rgba(0, 0, 0, 0.02)',
+                        border:'1px solid rgba(0, 0, 0, 0.08)',
                         borderRadius:12,
                         cursor:'pointer',
                         transition:'all 0.3s',
                         textAlign:'left',
-                        color:'#fff'
+                        color:'#1a1a1a'
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(139,92,246,0.2)'
-                        e.currentTarget.style.borderColor = 'rgba(139,92,246,0.5)'
+                        e.currentTarget.style.background = 'rgba(0, 0, 0, 0.05)'
+                        e.currentTarget.style.borderColor = 'rgba(0, 0, 0, 0.15)'
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
-                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+                        e.currentTarget.style.background = 'rgba(0, 0, 0, 0.02)'
+                        e.currentTarget.style.borderColor = 'rgba(0, 0, 0, 0.08)'
                       }}
                     >
                       <div style={{fontSize:28}}>{shortcut.icon}</div>
                       <div style={{flex:1}}>
-                        <div style={{fontSize:14, fontWeight:600}}>{shortcut.name}</div>
-                        <div style={{fontSize:11, color:'rgba(148,163,184,0.8)', marginTop:2}}>Tap to plan route</div>
+                        <div style={{fontSize:14, fontWeight:600, color:'#1a1a1a'}}>{shortcut.name}</div>
+                        <div style={{fontSize:11, color:'#666666', marginTop:2}}>Tap to plan route</div>
                       </div>
                       <div style={{fontSize:20, opacity:0.6}}>→</div>
                     </button>
                   )) : (
-                    <div style={{textAlign:'center', padding:'30px 0', color:'rgba(148,163,184,0.7)'}}>
+                    <div style={{textAlign:'center', padding:'30px 0', color:'#666666'}}>
                       <div style={{fontSize:36, marginBottom:8}}>📍</div>
                       <div style={{fontSize:13}}>No shortcuts saved yet</div>
                     </div>
@@ -2977,18 +2970,17 @@ export default function App(){
 
               {/* Recent Activity */}
               <div style={{
-                background:'linear-gradient(135deg, rgba(236,72,153,0.12) 0%, rgba(15,23,42,0.4) 100%)',
-                border:'1px solid rgba(236,72,153,0.3)',
+                background:'rgba(0, 0, 0, 0.02)',
+                border:'1px solid rgba(0, 0, 0, 0.08)',
                 borderRadius:20,
                 padding:'24px',
-                backdropFilter:'blur(12px)',
-                boxShadow:'0 8px 32px rgba(0,0,0,0.12)'
+                boxShadow:'0 2px 8px rgba(0,0,0,0.04)'
               }}>
                 <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:20}}>
                   <div style={{fontSize:28}}>📋</div>
                   <div>
                     <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Recent Activity</h3>
-                    <p style={{fontSize:12, color:'rgba(148,163,184,0.9)'}}>Your latest actions</p>
+                    <p style={{fontSize:12, color:'#666666'}}>Your latest actions</p>
                   </div>
                 </div>
                 <div style={{display:'flex', flexDirection:'column', gap:10}}>
@@ -3170,7 +3162,7 @@ export default function App(){
                             <div style={{
                               marginTop:10,
                               padding:'10px 12px',
-                              background:'rgba(59,130,246,0.12)',
+                              background:'rgba(0, 0, 0, 0.03)',
                               borderRadius:10,
                               border:'1px solid rgba(59,130,246,0.25)',
                               fontSize:12,
@@ -3233,21 +3225,21 @@ export default function App(){
                       left:0, 
                       right:0, 
                       zIndex:1000,
-                      background:'linear-gradient(135deg, rgba(30, 41, 59, 0.98) 0%, rgba(15, 23, 42, 0.98) 100%)',
+                      background:'#ffffff',
                       backdropFilter:'blur(40px)',
-                      border:'2px solid rgba(139, 92, 246, 0.4)', 
-                      borderRadius:16, 
+                      border:'1px solid rgba(0, 0, 0, 0.15)',
+                      borderRadius:16,
                       marginTop:8,
                       maxHeight:320,
                       overflowY:'auto',
-                      boxShadow:'0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1) inset'
+                      boxShadow:'0 4px 12px rgba(0,0,0,0.1)'
                     }}>
                       <div style={{
                         padding:'10px 14px',
                         fontSize:11,
                         fontWeight:700,
-                        color:'rgba(139, 92, 246, 1)',
-                        borderBottom:'1px solid rgba(139, 92, 246, 0.2)',
+                        color:'#666666',
+                        borderBottom:'1px solid rgba(0, 0, 0, 0.08)',
                         textTransform:'uppercase',
                         letterSpacing:'0.5px'
                       }}>
@@ -3265,8 +3257,8 @@ export default function App(){
                             background:'transparent'
                           }}
                           onMouseEnter={e => {
-                            e.currentTarget.style.background = 'linear-gradient(90deg, rgba(139, 92, 246, 0.15) 0%, rgba(59, 130, 246, 0.15) 100%)'
-                            e.currentTarget.style.borderLeft = '3px solid rgba(139, 92, 246, 0.8)'
+                            e.currentTarget.style.background = 'rgba(0, 0, 0, 0.02)'
+                            e.currentTarget.style.borderLeft = '3px solid rgba(0, 0, 0, 0.3)'
                             e.currentTarget.style.paddingLeft = '13px'
                           }}
                           onMouseLeave={e => {
@@ -3276,9 +3268,9 @@ export default function App(){
                           }}
                         >
                           <div style={{
-                            fontWeight:700, 
-                            fontSize:15, 
-                            color:'#ffffff',
+                            fontWeight:700,
+                            fontSize:15,
+                            color:'#1a1a1a',
                             marginBottom:6,
                             display:'flex',
                             alignItems:'center',
@@ -3298,9 +3290,9 @@ export default function App(){
                               <span style={{
                                 fontSize:11,
                                 padding:'2px 8px',
-                                background:'rgba(139, 92, 246, 0.3)',
+                                background:'rgba(0, 0, 0, 0.08)',
                                 borderRadius:8,
-                                color:'rgba(139, 92, 246, 1)',
+                                color:'#666666',
                                 fontWeight:600
                               }}>
                                 {result.address.suburb}
@@ -3308,8 +3300,8 @@ export default function App(){
                             )}
                           </div>
                           <div style={{
-                            fontSize:11, 
-                            color:'rgba(255,255,255,0.5)', 
+                            fontSize:11,
+                            color:'#666666',
                             lineHeight:1.5,
                             paddingLeft:26,
                             marginBottom:4
@@ -3365,21 +3357,21 @@ export default function App(){
                       left:0, 
                       right:0, 
                       zIndex:1000,
-                      background:'linear-gradient(135deg, rgba(30, 41, 59, 0.98) 0%, rgba(15, 23, 42, 0.98) 100%)',
+                      background:'#ffffff',
                       backdropFilter:'blur(40px)',
-                      border:'2px solid rgba(59, 130, 246, 0.4)', 
-                      borderRadius:16, 
+                      border:'1px solid rgba(0, 0, 0, 0.15)',
+                      borderRadius:16,
                       marginTop:8,
                       maxHeight:320,
                       overflowY:'auto',
-                      boxShadow:'0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.1) inset'
+                      boxShadow:'0 4px 12px rgba(0,0,0,0.1)'
                     }}>
                       <div style={{
                         padding:'10px 14px',
                         fontSize:11,
                         fontWeight:700,
-                        color:'rgba(59, 130, 246, 1)',
-                        borderBottom:'1px solid rgba(59, 130, 246, 0.2)',
+                        color:'#666666',
+                        borderBottom:'1px solid rgba(0, 0, 0, 0.08)',
                         textTransform:'uppercase',
                         letterSpacing:'0.5px'
                       }}>
@@ -3397,8 +3389,8 @@ export default function App(){
                             background:'transparent'
                           }}
                           onMouseEnter={e => {
-                            e.currentTarget.style.background = 'linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%)'
-                            e.currentTarget.style.borderLeft = '3px solid rgba(59, 130, 246, 0.8)'
+                            e.currentTarget.style.background = 'rgba(0, 0, 0, 0.03)'
+                            e.currentTarget.style.borderLeft = '3px solid rgba(0, 0, 0, 0.15)'
                             e.currentTarget.style.paddingLeft = '13px'
                           }}
                           onMouseLeave={e => {
@@ -3408,9 +3400,9 @@ export default function App(){
                           }}
                         >
                           <div style={{
-                            fontWeight:700, 
-                            fontSize:15, 
-                            color:'#ffffff',
+                            fontWeight:700,
+                            fontSize:15,
+                            color:'#1a1a1a',
                             marginBottom:6,
                             display:'flex',
                             alignItems:'center',
@@ -3430,9 +3422,9 @@ export default function App(){
                               <span style={{
                                 fontSize:11,
                                 padding:'2px 8px',
-                                background:'rgba(59, 130, 246, 0.3)',
+                                background:'rgba(0, 0, 0, 0.08)',
                                 borderRadius:8,
-                                color:'rgba(59, 130, 246, 1)',
+                                color:'#666666',
                                 fontWeight:600
                               }}>
                                 {result.address.suburb}
@@ -3440,8 +3432,8 @@ export default function App(){
                             )}
                           </div>
                           <div style={{
-                            fontSize:11, 
-                            color:'rgba(255,255,255,0.5)', 
+                            fontSize:11,
+                            color:'#666666',
                             lineHeight:1.5,
                             paddingLeft:26,
                             marginBottom:4
@@ -3466,7 +3458,7 @@ export default function App(){
                 </div>
 
                 <div style={{display:'flex', gap:8}}>
-                  <button className="btn btn-primary" onClick={swapOD} style={{flex:1}}>🔄 Swap</button>
+                  <button className="btn" onClick={swapOD} style={{flex:1, background:'#ffffff !important', color:'#1a1a1a !important', border:'1px solid rgba(0,0,0,0.15)'}}>🔄 Swap</button>
                 </div>
                 <div style={{display:'flex', flexDirection:'column', gap:6}}>
                   <span style={{fontSize:12, opacity:0.75}}>Preferred modes</span>
@@ -3503,7 +3495,7 @@ export default function App(){
                   </div>
                   <input placeholder="now or 2025-11-03T09:00" value={whenValue} onChange={e=>setWhenValue(e.target.value)} />
                 </div>
-                <button className="btn btn-primary" onClick={plan} style={{alignSelf:'flex-start'}}>{text.findItineraries}</button>
+                <button className="btn" onClick={plan} style={{alignSelf:'flex-start', background:'#ffffff !important', color:'#1a1a1a !important', border:'1px solid rgba(0,0,0,0.15)'}}>{text.findItineraries}</button>
               </div>
               <div>
                 {itins.length === 0 ? (
@@ -3518,7 +3510,7 @@ export default function App(){
                         <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:16, flexWrap:'wrap'}}>
                           <div style={{flex:1}}>
                             <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10, flexWrap:'wrap'}}>
-                              <span style={{background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color:'white', width:32, height:32, borderRadius:'50%', display:'grid', placeItems:'center', fontWeight:700, fontSize:14}}>{idx + 1}</span>
+                              <span style={{background:'#1a1a1a', color:'white', width:32, height:32, borderRadius:'50%', display:'grid', placeItems:'center', fontWeight:700, fontSize:14}}>{idx + 1}</span>
                               <div style={{fontSize:18, fontWeight:700}}>~{it.durationMin} min</div>
                               <div style={{color:'var(--muted)', fontSize:14}}>• {it.transfers} transfers</div>
                               <div style={{background:it.reliability > 0.85 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(251, 191, 36, 0.15)', color:it.reliability > 0.85 ? 'var(--success)' : '#f59e0b', padding:'4px 10px', borderRadius:8, fontSize:12, fontWeight:600}}>{Math.round((it.reliability||0)*100)}% reliable</div>
@@ -3530,9 +3522,9 @@ export default function App(){
                             </div>
                           </div>
                           <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
-                            <button className="btn" onClick={(e) => {e.stopPropagation(); exportPdf(it)}}>📄 {text.exportPdf}</button>
-                            <button className="btn btn-primary" onClick={(e) => {e.stopPropagation(); suggestAlt(it)}}>🔄 {text.suggestAlt}</button>
-                            <button className="btn" onClick={(e) => {e.stopPropagation(); setExpandedItin(expandedItin === it.id ? null : it.id)}} style={{background: expandedItin === it.id ? 'var(--primary)' : '', color: expandedItin === it.id ? 'white' : ''}}>
+                            <button className="btn" onClick={(e) => {e.stopPropagation(); exportPdf(it)}} style={{background:'#ffffff !important', border:'1px solid rgba(0,0,0,0.15)', color:'#1a1a1a !important'}}>📄 {text.exportPdf}</button>
+                            <button className="btn" onClick={(e) => {e.stopPropagation(); suggestAlt(it)}} style={{background:'#ffffff !important', border:'1px solid rgba(0,0,0,0.15)', color:'#1a1a1a !important'}}>🔄 {text.suggestAlt}</button>
+                            <button className="btn" onClick={(e) => {e.stopPropagation(); setExpandedItin(expandedItin === it.id ? null : it.id)}} style={{background:'#ffffff !important', color:'#1a1a1a !important', border:'1px solid rgba(0,0,0,0.15)'}}>
                               {expandedItin === it.id ? '▼ Hide Details' : '▶ View Details'}
                             </button>
                           </div>
@@ -3543,8 +3535,8 @@ export default function App(){
                           <div style={{
                             marginTop:20,
                             padding:20,
-                            background:'linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)',
-                            border:'1px solid rgba(102, 126, 234, 0.2)',
+                            background:'rgba(0, 0, 0, 0.02)',
+                            border:'1px solid rgba(0, 0, 0, 0.08)',
                             borderRadius:12
                           }}>
                             {/* Journey Summary Stats */}
@@ -3626,17 +3618,13 @@ export default function App(){
                                         width:40,
                                         height:40,
                                         borderRadius:'50%',
-                                        background: isWalk ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' :
-                                                   isBus ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' :
-                                                   isTrain ? 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)' :
-                                                   isFerry ? 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)' :
-                                                   'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-                                        color:'white',
+                                        background: '#e5e7eb',
+                                        color:'#1a1a1a',
                                         display:'grid',
                                         placeItems:'center',
                                         fontSize:18,
                                         fontWeight:700,
-                                        boxShadow:'0 4px 12px rgba(0,0,0,0.2)'
+                                        boxShadow:'0 2px 4px rgba(0,0,0,0.08)'
                                       }}>
                                         {isWalk ? '🚶' : isBus ? '🚌' : isTrain ? '🚆' : isFerry ? '⛴️' : isBike ? '🚴' : '🚌'}
                                       </div>
@@ -3653,7 +3641,7 @@ export default function App(){
                                       
                                       {/* Walking Details */}
                                       {isWalk && (
-                                        <div style={{fontSize:13, color:'rgba(255,255,255,0.7)', marginBottom:8}}>
+                                        <div style={{fontSize:13, color:'#1a1a1a', marginBottom:8}}>
                                           <div style={{marginBottom:4}}>📏 Distance: {((it.walk_km || 0.4) / it.legs.filter(l => l.toLowerCase().includes('walk')).length).toFixed(2)} km</div>
                                           <div style={{marginBottom:4}}>⏱️ Duration: ~{Math.ceil((it.walk_km || 0.4) / it.legs.filter(l => l.toLowerCase().includes('walk')).length * 12)} min</div>
                                           <button 
@@ -3667,9 +3655,9 @@ export default function App(){
                                               marginTop:8,
                                               padding:'6px 12px',
                                               fontSize:12,
-                                              background:'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                                              color:'white',
-                                              border:'none'
+                                              background:'#ffffff',
+                                              color:'#1a1a1a',
+                                              border:'1px solid rgba(0,0,0,0.15)'
                                             }}
                                           >
                                             🗺️ View Walking Route
@@ -3679,13 +3667,13 @@ export default function App(){
                                       
                                       {/* Bus/Train Details */}
                                       {(isBus || isTrain || isFerry) && (
-                                        <div style={{fontSize:13, color:'rgba(255,255,255,0.7)'}}>
+                                        <div style={{fontSize:13, color:'#1a1a1a'}}>
                                           <div style={{marginBottom:8, padding:10, background:'rgba(255,255,255,0.05)', borderRadius:8}}>
                                             {routeNumber && (
                                               <div style={{marginBottom:6}}>
                                                 <span style={{
-                                                  background: isBus ? '#3b82f6' : isTrain ? '#8b5cf6' : '#06b6d4',
-                                                  color:'white',
+                                                  background: '#e5e7eb',
+                                                  color:'#1a1a1a',
                                                   padding:'4px 10px',
                                                   borderRadius:6,
                                                   fontSize:13,
@@ -3710,27 +3698,27 @@ export default function App(){
                                           </div>
                                           
                                           <div style={{display:'flex', gap:8, marginTop:8, flexWrap:'wrap'}}>
-                                            <button 
+                                            <button
                                               className="btn"
                                               onClick={() => {
                                                 setSelectedStop({stop_id: `${1000 + legIdx * 100}`, name: `Stop ${1000 + legIdx * 100}`})
                                                 setView('home')
                                               }}
-                                              style={{padding:'6px 12px', fontSize:12}}
+                                              style={{padding:'6px 12px', fontSize:12, background:'#ffffff !important', color:'#1a1a1a !important', border:'1px solid rgba(0,0,0,0.15)'}}
                                             >
                                               🚏 View Stop Info
                                             </button>
-                                            <button 
+                                            <button
                                               className="btn"
                                               onClick={() => alert(`Live tracking for ${routeNumber || 'this route'} will be available soon!`)}
-                                              style={{padding:'6px 12px', fontSize:12}}
+                                              style={{padding:'6px 12px', fontSize:12, background:'#ffffff !important', color:'#1a1a1a !important', border:'1px solid rgba(0,0,0,0.15)'}}
                                             >
                                               📍 Track Vehicle
                                             </button>
-                                            <button 
+                                            <button
                                               className="btn"
                                               onClick={() => alert(`Set reminder for ${routeNumber || 'this departure'}`)}
-                                              style={{padding:'6px 12px', fontSize:12}}
+                                              style={{padding:'6px 12px', fontSize:12, background:'#ffffff !important', color:'#1a1a1a !important', border:'1px solid rgba(0,0,0,0.15)'}}
                                             >
                                               🔔 Set Reminder
                                             </button>
@@ -3747,12 +3735,12 @@ export default function App(){
                             <div style={{
                               marginTop:20,
                               padding:12,
-                              background:'rgba(59, 130, 246, 0.1)',
-                              borderLeft:'3px solid #3b82f6',
+                              background:'rgba(0, 0, 0, 0.03)',
+                              borderLeft:'3px solid #666666',
                               borderRadius:6
                             }}>
                               <div style={{fontSize:13, fontWeight:700, marginBottom:6}}>💡 Travel Tips</div>
-                              <ul style={{fontSize:12, color:'rgba(255,255,255,0.8)', margin:0, paddingLeft:20}}>
+                              <ul style={{fontSize:12, color:'#1a1a1a', margin:0, paddingLeft:20}}>
                                 <li>Allow 5 extra minutes for unexpected delays</li>
                                 <li>Have your AT HOP card ready before boarding</li>
                                 {it.transfers > 0 && <li>Transfers are free within 30 minutes</li>}
@@ -3766,8 +3754,8 @@ export default function App(){
                               <div style={{
                                 marginTop:20,
                                 padding:16,
-                                background:'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(219, 39, 119, 0.1) 100%)',
-                                border:'2px solid rgba(139, 92, 246, 0.3)',
+                                background:'linear-gradient(135deg, rgba(0, 0, 0, 0.03) 0%, rgba(219, 39, 119, 0.1) 100%)',
+                                border:'2px solid rgba(0, 0, 0, 0.08)',
                                 borderRadius:12
                               }}>
                                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12}}>
@@ -3777,7 +3765,7 @@ export default function App(){
                                   <div style={{
                                     fontSize:24,
                                     fontWeight:700,
-                                    color: it.mcda_score >= 85 ? '#10b981' : it.mcda_score >= 70 ? '#3b82f6' : '#f59e0b',
+                                    color: it.mcda_score >= 85 ? '#10b981' : it.mcda_score >= 70 ? '#666666' : '#f59e0b',
                                     display:'flex',
                                     alignItems:'center',
                                     gap:6
@@ -3791,10 +3779,10 @@ export default function App(){
                                   <div style={{
                                     fontSize:12,
                                     padding:'8px 12px',
-                                    background:'rgba(139, 92, 246, 0.15)',
+                                    background:'rgba(0, 0, 0, 0.04)',
                                     borderRadius:8,
                                     marginBottom:12,
-                                    color:'rgba(255,255,255,0.9)'
+                                    color:'#1a1a1a'
                                   }}>
                                     {it.mcda_recommendation}
                                   </div>
@@ -3816,7 +3804,7 @@ export default function App(){
                                            criterion === 'reliability' ? '✓' :
                                            '🌱'} {criterion}
                                         </div>
-                                        <div style={{fontSize:14, fontWeight:700, color: score >= 80 ? '#10b981' : score >= 60 ? '#3b82f6' : '#f59e0b'}}>
+                                        <div style={{fontSize:14, fontWeight:700, color: score >= 80 ? '#10b981' : score >= 60 ? '#666666' : '#f59e0b'}}>
                                           {score.toFixed(0)}/100
                                         </div>
                                         <div style={{
@@ -3830,7 +3818,7 @@ export default function App(){
                                           <div style={{
                                             width:`${score}%`,
                                             height:'100%',
-                                            background: score >= 80 ? '#10b981' : score >= 60 ? '#3b82f6' : '#f59e0b',
+                                            background: score >= 80 ? '#10b981' : score >= 60 ? '#666666' : '#f59e0b',
                                             borderRadius:2
                                           }} />
                                         </div>
@@ -4094,8 +4082,8 @@ export default function App(){
                               <div style={{
                                 marginTop:10,
                                 padding:10,
-                                background:'rgba(59, 130, 246, 0.1)',
-                                borderLeft:'3px solid #3b82f6',
+                                background:'rgba(0, 0, 0, 0.03)',
+                                borderLeft:'3px solid #666666',
                                 borderRadius:6,
                                 fontSize:13,
                                 color:'rgba(255,255,255,0.8)'
@@ -4303,7 +4291,7 @@ export default function App(){
                     marginTop:20,
                     padding:12,
                     background:'rgba(59,130,246,0.1)',
-                    border:'1px solid rgba(59,130,246,0.3)',
+                    border:'1px solid rgba(0, 0, 0, 0.1)',
                     borderRadius:8,
                     fontSize:12
                   }}>
@@ -4428,9 +4416,9 @@ export default function App(){
             <h2 className="section-title">📊 System Analytics Dashboard</h2>
             <div style={{
               padding:'16px 20px',
-              background:'linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%)',
+              background:'linear-gradient(135deg, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.04) 100%)',
               borderRadius:12,
-              border:'1px solid rgba(59, 130, 246, 0.3)',
+              border:'1px solid rgba(0, 0, 0, 0.08)',
               marginBottom:24
             }}>
               <div style={{fontSize:14}}>
@@ -4444,12 +4432,12 @@ export default function App(){
                 <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:16, marginBottom:32}}>
                   <div style={{padding:20, background:'var(--glass-bg)', backdropFilter:'blur(10px)', borderRadius:12, border:'1px solid var(--glass-border)'}}>
                     <div style={{fontSize:12, opacity:0.7, marginBottom:6}}>Total Trips Planned</div>
-                    <div style={{fontSize:32, fontWeight:700, color:'#3b82f6'}}>{analyticsData.total_trips || 0}</div>
+                    <div style={{fontSize:32, fontWeight:700, color:'#666666'}}>{analyticsData.total_trips || 0}</div>
                   </div>
 
                   <div style={{padding:20, background:'var(--glass-bg)', backdropFilter:'blur(10px)', borderRadius:12, border:'1px solid var(--glass-border)'}}>
                     <div style={{fontSize:12, opacity:0.7, marginBottom:6}}>Active Users (7d)</div>
-                    <div style={{fontSize:32, fontWeight:700, color:'#8b5cf6'}}>{analyticsData.active_users_7d || 0}</div>
+                    <div style={{fontSize:32, fontWeight:700, color:'#666666'}}>{analyticsData.active_users_7d || 0}</div>
                   </div>
 
                   <div style={{padding:20, background:'var(--glass-bg)', backdropFilter:'blur(10px)', borderRadius:12, border:'1px solid var(--glass-border)'}}>
@@ -4528,9 +4516,9 @@ export default function App(){
 
                 {/* MCDA Insights */}
                 <FeatureCard icon="🏆" title="Multi-Criteria Decision Analysis" description="Route scoring breakdown across all trips">
-                  <div style={{padding:16, background:'rgba(139, 92, 246, 0.1)', borderRadius:8}}>
+                  <div style={{padding:16, background:'rgba(0, 0, 0, 0.03)', borderRadius:8}}>
                     <div style={{fontSize:14, marginBottom:12}}>
-                      Average MCDA score of <strong style={{color:'#8b5cf6'}}>{analyticsData.avg_mcda_score?.toFixed(1)}/100</strong> indicates{' '}
+                      Average MCDA score of <strong style={{color:'#666666'}}>{analyticsData.avg_mcda_score?.toFixed(1)}/100</strong> indicates{' '}
                       {analyticsData.avg_mcda_score >= 80 ? 'excellent' : 
                        analyticsData.avg_mcda_score >= 65 ? 'good' : 
                        'acceptable'} route quality across all planned trips.
@@ -4579,7 +4567,7 @@ export default function App(){
                   </div>
                 </FeatureCard>
 
-                <div style={{marginTop:20, padding:16, background:'rgba(59, 130, 246, 0.1)', borderRadius:8, fontSize:13, opacity:0.8}}>
+                <div style={{marginTop:20, padding:16, background:'rgba(0, 0, 0, 0.03)', borderRadius:8, fontSize:13, opacity:0.8}}>
                   ℹ️ <b>Note:</b> Analytics data is tracked for research and assessment purposes. All metrics are calculated based on actual trip planning data.
                 </div>
               </>
