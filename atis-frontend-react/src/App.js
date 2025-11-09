@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Circle, Polyline, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
@@ -1361,6 +1361,7 @@ export default function App(){
   const [alts, setAlts] = useState({})
   const [view, setView] = useState('home')
   const [expandedItin, setExpandedItin] = useState(null)
+  const [expandedTransitStatus, setExpandedTransitStatus] = useState({})
 
   const [modes, setModes] = useState(['bus','train','walk'])
   const [optimize, setOptimize] = useState('fastest')
@@ -1371,6 +1372,7 @@ export default function App(){
   const [whenValue, setWhenValue] = useState('now')
 
   const [weather, setWeather] = useState(null)
+  const [lastWeatherUpdate, setLastWeatherUpdate] = useState(null)
   const [safetyContacts, setSafetyContacts] = useState([])
   const [uiLang, setUiLang] = useState('en')
   const [currency, setCurrency] = useState('NZD')
@@ -1401,6 +1403,13 @@ export default function App(){
   // Assessment features - Environmental & MCDA
   const [mcdaProfile, setMcdaProfile] = useState('balanced')
   const [showMcdaBreakdown, setShowMcdaBreakdown] = useState({})
+
+  // Update relative time display every 10 seconds for real-time feel (but not too frequent to prevent blinking)
+  const [timeTick, setTimeTick] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setTimeTick(prev => prev + 1), 10000)
+    return () => clearInterval(timer)
+  }, [])
 
   const text = TRANSLATIONS[uiLang] || TRANSLATIONS.en
   const convertedAmount = Number((amount * (CURRENCY_RATES[currency] || 1)).toFixed(2))
@@ -1527,7 +1536,7 @@ export default function App(){
         meta: lastTrafficUpdate ? 'Last update' : 'Tap refresh on map'
       }
     ]
-  }, [stops.length, itins.length, alertStats.total, alertStats.severe, lastTrafficUpdate])
+  }, [stops.length, itins.length, alertStats.total, alertStats.severe, lastTrafficUpdate, timeTick]) // Include timeTick to update relative time display
 
 
   const greeting = useMemo(() => {
@@ -1552,15 +1561,80 @@ export default function App(){
     return formatAlertStatus(topAlert.start_time, topAlert.end_time)
   }, [topAlert])
 
-  // Transit system status - simulated real-time
+  // Transit system status - with full details
   const transitStatus = useMemo(() => {
-    const modes = [
-      { name: 'Bus Network', icon: '🚌', status: alerts.filter(a => a.affected_modes?.includes('bus')).length > 0 ? 'delays' : 'normal' },
-      { name: 'Train Services', icon: '🚆', status: alerts.filter(a => a.affected_modes?.includes('train')).length > 0 ? 'disrupted' : 'normal' },
-      { name: 'Ferry Services', icon: '⛴️', status: alerts.filter(a => a.affected_modes?.includes('ferry')).length > 0 ? 'delays' : 'normal' },
-      { name: 'Road Network', icon: '🚗', status: trafficIncidents.length > 2 ? 'congested' : trafficIncidents.length > 0 ? 'delays' : 'normal' }
+    const busAlerts = alerts.filter(a => a.affected_modes?.includes('bus'))
+    const trainAlerts = alerts.filter(a => a.affected_modes?.includes('train'))
+    const ferryAlerts = alerts.filter(a => a.affected_modes?.includes('ferry'))
+    const roadIncidents = trafficIncidents || []
+    
+    const getAffectedRoutes = (alertList) => {
+      const routes = new Set()
+      alertList.forEach(alert => {
+        if (alert.affected_routes && Array.isArray(alert.affected_routes)) {
+          alert.affected_routes.forEach(route => routes.add(route))
+        }
+      })
+      return Array.from(routes)
+    }
+    
+    const getMaxDelay = (alertList) => {
+      return Math.max(...alertList.map(a => a.expected_delay_min || 0), 0)
+    }
+    
+    const getSeverity = (alertList, incidentList = []) => {
+      if (alertList.some(a => a.severity === 'critical' || a.severity === 'high') || 
+          incidentList.some(i => i.severity === 'critical' || i.severity === 'high')) {
+        return 'disrupted'
+      }
+      if (alertList.length > 0 || incidentList.length > 0) {
+        return incidentList.length > 2 ? 'congested' : 'delays'
+      }
+      return 'normal'
+    }
+    
+    return [
+      { 
+        name: 'Bus Network', 
+        icon: '🚌', 
+        status: getSeverity(busAlerts),
+        alertCount: busAlerts.length,
+        affectedRoutes: getAffectedRoutes(busAlerts),
+        maxDelay: getMaxDelay(busAlerts),
+        alerts: busAlerts,
+        incidents: []
+      },
+      { 
+        name: 'Train Services', 
+        icon: '🚆', 
+        status: getSeverity(trainAlerts),
+        alertCount: trainAlerts.length,
+        affectedRoutes: getAffectedRoutes(trainAlerts),
+        maxDelay: getMaxDelay(trainAlerts),
+        alerts: trainAlerts,
+        incidents: []
+      },
+      { 
+        name: 'Ferry Services', 
+        icon: '⛴️', 
+        status: getSeverity(ferryAlerts),
+        alertCount: ferryAlerts.length,
+        affectedRoutes: getAffectedRoutes(ferryAlerts),
+        maxDelay: getMaxDelay(ferryAlerts),
+        alerts: ferryAlerts,
+        incidents: []
+      },
+      { 
+        name: 'Road Network', 
+        icon: '🚗', 
+        status: getSeverity([], roadIncidents),
+        alertCount: roadIncidents.length,
+        affectedRoutes: getAffectedRoutes(roadIncidents),
+        maxDelay: getMaxDelay(roadIncidents),
+        alerts: [],
+        incidents: roadIncidents
+      }
     ]
-    return modes
   }, [alerts, trafficIncidents])
 
   // Recent activity - stores last few actions
@@ -1594,8 +1668,8 @@ export default function App(){
   const [departuresLoading, setDeparturesLoading] = useState(false)
   const [expandedStops, setExpandedStops] = useState({})
 
-  // Fetch live departures for nearby stops
-  const fetchLiveDepartures = async () => {
+  // Fetch live departures for nearby stops (memoized to prevent unnecessary re-renders)
+  const fetchLiveDepartures = useCallback(async () => {
     if (stops.length === 0) return
     
     setDeparturesLoading(true)
@@ -1626,7 +1700,7 @@ export default function App(){
     } finally {
       setDeparturesLoading(false)
     }
-  }
+  }, [stops]) // Include stops to ensure latest data
 
   // Auto-refresh departures every 30 seconds
   useEffect(() => {
@@ -1635,7 +1709,10 @@ export default function App(){
       const interval = setInterval(fetchLiveDepartures, 30000)
       return () => clearInterval(interval)
     }
-  }, [view, stops])
+  }, [view, stops.length, fetchLiveDepartures]) // Use stops.length to prevent excessive interval recreation
+  
+  // Auth headers helper - defined early so it's available for all fetch calls
+  const authHeaders = () => token ? {'Authorization': `Bearer ${token}`} : {}
   
   // Fetch MFA status when user is authenticated
   useEffect(() => {
@@ -1751,14 +1828,38 @@ export default function App(){
     
     fetch(`${API}/stops/nearby?lat=${origin[0]}&lng=${origin[1]}&radius=900`)
       .then(r=>r.json()).then(d=>setStops(d.stops||[])).catch(()=>{})
-    fetch(`${API}/alerts`)
-      .then(r=>r.json()).then(d=> {
+    fetch(`${API}/alerts`, {
+      headers: authHeaders()
+    })
+      .then(r=>{
+        if (!r.ok) throw new Error('Alerts fetch failed')
+        return r.json()
+      })
+      .then(d=> {
         setAlerts([...(d.alerts||[]), ...(d.traffic||[])])
         setTrafficIncidents(d.traffic||[])
         setLastTrafficUpdate(Date.now())
-      }).catch(()=>{})
-    fetch(`${API}/weather/point?lat=${origin[0]}&lng=${origin[1]}`)
-      .then(r=>r.json()).then(d=>setWeather(d.forecast||null)).catch(()=>{})
+      })
+      .catch(err=>{
+        console.error('Alerts fetch error:', err)
+        setAlerts([])
+        setTrafficIncidents([])
+      })
+    fetch(`${API}/weather/point?lat=${origin[0]}&lng=${origin[1]}`, {
+      headers: authHeaders()
+    })
+      .then(r=>{
+        if (!r.ok) throw new Error('Weather fetch failed')
+        return r.json()
+      })
+      .then(d=>{
+        setWeather(d.forecast||null)
+        setLastWeatherUpdate(Date.now())
+      })
+      .catch(err=>{
+        console.error('Weather fetch error:', err)
+        setWeather(null)
+      })
     fetch(`${API}/safety/contacts`)
       .then(r=>r.json()).then(d=>setSafetyContacts(d.contacts||[])).catch(()=>{})
     fetch(`${API}/reviews`)
@@ -1773,9 +1874,23 @@ export default function App(){
     const timeoutId = setTimeout(() => {
       fetch(`${API}/stops/nearby?lat=${origin[0]}&lng=${origin[1]}&radius=900`)
         .then(r=>r.json()).then(d=>setStops(d.stops||[])).catch(()=>{})
-      fetch(`${API}/weather/point?lat=${origin[0]}&lng=${origin[1]}`)
-        .then(r=>r.json()).then(d=>setWeather(d.forecast||null)).catch(()=>{})
-    }, 300)
+      // Update weather when origin changes (debounced to prevent excessive fetches)
+      fetch(`${API}/weather/point?lat=${origin[0]}&lng=${origin[1]}`, {
+        headers: authHeaders()
+      })
+        .then(r=>{
+          if (!r.ok) throw new Error('Weather fetch failed')
+          return r.json()
+        })
+        .then(d=>{
+          setWeather(d.forecast||null)
+          setLastWeatherUpdate(Date.now())
+        })
+        .catch(err=>{
+          console.error('Weather fetch error:', err)
+          setWeather(null)
+        })
+    }, 500) // Increased debounce to 500ms to reduce blinking
     
     return () => clearTimeout(timeoutId)
   }, [origin[0], origin[1], isAuthenticated])
@@ -1794,7 +1909,10 @@ export default function App(){
   // Manual refresh function that can be called from the map
   const refreshTrafficData = async () => {
     try {
-      const r = await fetch(`${API}/alerts`)
+      const r = await fetch(`${API}/alerts`, {
+        headers: authHeaders()
+      })
+      if (!r.ok) throw new Error('Alerts fetch failed')
       const d = await r.json()
       setAlerts([...(d.alerts||[]), ...(d.traffic||[])])
       setTrafficIncidents(d.traffic||[])
@@ -1813,15 +1931,22 @@ export default function App(){
     if (!isAuthenticated) return
     
     const refreshTraffic = () => {
-      fetch(`${API}/alerts`)
-        .then(r=>r.json())
+      fetch(`${API}/alerts`, {
+        headers: authHeaders()
+      })
+        .then(r=>{
+          if (!r.ok) throw new Error('Alerts fetch failed')
+          return r.json()
+        })
         .then(d=> {
           setAlerts([...(d.alerts||[]), ...(d.traffic||[])])
           setTrafficIncidents(d.traffic||[])
           const now = Date.now()
           setLastTrafficUpdate(now)
         })
-        .catch(()=>{})
+        .catch(err=>{
+          console.error('Traffic refresh error:', err)
+        })
     }
     
     // Set up interval for auto-refresh (30 seconds)
@@ -1830,14 +1955,47 @@ export default function App(){
     // Clean up interval on unmount
     return () => clearInterval(intervalId)
   }, [isAuthenticated])
-  
-  // Update relative time display every 10 seconds
-  const [, forceUpdate] = useState()
-  useEffect(() => {
-    const timer = setInterval(() => forceUpdate({}), 10000)
-    return () => clearInterval(timer)
-  }, [])
 
+  // Store origin in ref to avoid recreating interval on every origin change
+  const originRef = useRef(origin)
+  useEffect(() => {
+    originRef.current = origin
+  }, [origin[0], origin[1]])
+
+  // Auto-refresh weather data every 2 minutes for real-time updates
+  // Note: Weather also updates when origin changes (handled in separate useEffect)
+  useEffect(() => {
+    if (!isAuthenticated) return
+    
+    const refreshWeather = () => {
+      const currentOrigin = originRef.current
+      fetch(`${API}/weather/point?lat=${currentOrigin[0]}&lng=${currentOrigin[1]}`, {
+        headers: authHeaders()
+      })
+        .then(r=>{
+          if (!r.ok) throw new Error('Weather fetch failed')
+          return r.json()
+        })
+        .then(d=> {
+          setWeather(d.forecast || null)
+          setLastWeatherUpdate(Date.now())
+        })
+        .catch(err=>{
+          console.error('Weather fetch error:', err)
+          setWeather(null)
+        })
+    }
+    
+    // Initial fetch
+    refreshWeather()
+    
+    // Set up interval for auto-refresh (2 minutes for real-time weather updates)
+    const intervalId = setInterval(refreshWeather, 120000)
+    
+    // Clean up interval on unmount
+    return () => clearInterval(intervalId)
+  }, [isAuthenticated]) // Only recreate when authentication changes, not on origin change
+  
   const viewDepartures = async (stop) => {
     setSelectedStop(stop)
     const r = await fetch(`${API}/departures?stop_id=${stop.stop_id}`)
@@ -1977,8 +2135,6 @@ export default function App(){
     }
   }
 
-  const authHeaders = () => token ? {'Authorization': `Bearer ${token}`} : {}
-  
   const savePrefs = async () => {
     if (!token){ alert('Please login to save preferences.'); return }
     const r = await fetch(`${API}/prefs`, { method:'POST', headers:{'Content-Type':'application/json', ...authHeaders()}, body: JSON.stringify({ lang:'en', currency:'NZD', home: origin, work: dest }) })
@@ -2456,7 +2612,57 @@ export default function App(){
                         pointerEvents:'none'
                       }}>{metric.icon}</div>
                       <div style={{position:'relative', zIndex:1}}>
-                        <div style={{fontSize:28, marginBottom:8}}>{metric.icon}</div>
+                        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8}}>
+                          <div style={{fontSize:28}}>{metric.icon}</div>
+                          {/* Real-time update indicator for traffic */}
+                          {metric.label === 'Traffic refresh' && lastTrafficUpdate && (
+                            <div style={{
+                              display:'flex',
+                              alignItems:'center',
+                              gap:4,
+                              padding:'4px 8px',
+                              background:'rgba(16, 185, 129, 0.1)',
+                              borderRadius:8,
+                              fontSize:9,
+                              color:'#10b981',
+                              fontWeight:600
+                            }}>
+                              <span style={{
+                                width:5,
+                                height:5,
+                                borderRadius:'50%',
+                                background:'#10b981',
+                                animation:'pulse 2s ease-in-out infinite',
+                                boxShadow:'0 0 4px rgba(16, 185, 129, 0.6)'
+                              }}></span>
+                              LIVE
+                            </div>
+                          )}
+                          {/* Real-time update indicator for weather */}
+                          {metric.label === 'Current Weather' && lastWeatherUpdate && (
+                            <div style={{
+                              display:'flex',
+                              alignItems:'center',
+                              gap:4,
+                              padding:'4px 8px',
+                              background:'rgba(16, 185, 129, 0.1)',
+                              borderRadius:8,
+                              fontSize:9,
+                              color:'#10b981',
+                              fontWeight:600
+                            }}>
+                              <span style={{
+                                width:5,
+                                height:5,
+                                borderRadius:'50%',
+                                background:'#10b981',
+                                animation:'pulse 2s ease-in-out infinite',
+                                boxShadow:'0 0 4px rgba(16, 185, 129, 0.6)'
+                              }}></span>
+                              LIVE
+                            </div>
+                          )}
+                        </div>
                         <div style={{fontSize:32, fontWeight:800, marginBottom:6, color:'#1a1a1a'}}>{metric.value}</div>
                         <div style={{fontSize:13, fontWeight:600, color:'#1a1a1a', marginBottom:4}}>{metric.label}</div>
                         <div style={{fontSize:11, color:'#666666', fontStyle:'italic'}}>{metric.meta}</div>
@@ -2481,7 +2687,7 @@ export default function App(){
             </div>
 
             {/* Real-Time Dashboard Sections */}
-            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:24, marginBottom:32}}>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(300px, 1fr))', gap:24, marginBottom:32}}>
               
               {/* Transit System Status */}
               <div style={{
@@ -2507,36 +2713,260 @@ export default function App(){
                       congested: { color: '#f97316', bg: 'rgba(249,115,22,0.15)', label: 'Congested' }
                     }
                     const config = statusConfig[mode.status] || statusConfig.normal
+                    const isExpanded = expandedTransitStatus[mode.name]
+                    const hasIssues = mode.alertCount > 0 || mode.incidents.length > 0
+                    const allItems = [...mode.alerts, ...mode.incidents]
+                    
                     return (
                       <div
                         key={idx}
                         style={{
-                          display:'flex',
-                          justifyContent:'space-between',
-                          alignItems:'center',
-                          padding:'12px 16px',
                           background:'rgba(255,255,255,0.05)',
-                          border:'1px solid rgba(255,255,255,0.1)',
+                          border:`1px solid ${hasIssues ? config.color + '40' : 'rgba(255,255,255,0.1)'}`,
                           borderRadius:12,
-                          transition:'all 0.3s'
+                          transition:'all 0.3s',
+                          overflow:'hidden'
                         }}
                       >
-                        <div style={{display:'flex', alignItems:'center', gap:10}}>
-                          <div style={{fontSize:22}}>{mode.icon}</div>
-                          <div style={{fontSize:14, fontWeight:600}}>{mode.name}</div>
+                        <div
+                          onClick={() => setExpandedTransitStatus(prev => ({
+                            ...prev,
+                            [mode.name]: !prev[mode.name]
+                          }))}
+                          style={{
+                            display:'flex',
+                            justifyContent:'space-between',
+                            alignItems:'center',
+                            padding:'12px 16px',
+                            cursor:'pointer',
+                            transition:'background 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <div style={{display:'flex', alignItems:'center', gap:10, flex:1}}>
+                            <div style={{fontSize:22}}>{mode.icon}</div>
+                            <div style={{flex:1}}>
+                              <div style={{display:'flex', alignItems:'center', gap:8}}>
+                                <div style={{fontSize:14, fontWeight:600}}>{mode.name}</div>
+                                {hasIssues && (
+                                  <span style={{
+                                    padding:'2px 8px',
+                                    borderRadius:999,
+                                    background:config.bg,
+                                    color:config.color,
+                                    fontSize:10,
+                                    fontWeight:700
+                                  }}>
+                                    {mode.alertCount + mode.incidents.length} issue{mode.alertCount + mode.incidents.length !== 1 ? 's' : ''}
+                                  </span>
+                                )}
+                              </div>
+                              {!isExpanded && hasIssues && (
+                                <div style={{fontSize:11, color:'rgba(148,163,184,0.9)', marginTop:4}}>
+                                  {mode.affectedRoutes.length > 0 && (
+                                    <span>Routes: {mode.affectedRoutes.slice(0, 3).join(', ')}{mode.affectedRoutes.length > 3 ? ` +${mode.affectedRoutes.length - 3}` : ''}</span>
+                                  )}
+                                  {mode.maxDelay > 0 && (
+                                    <span style={{marginLeft:8}}>• Up to {mode.maxDelay} min delay</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{display:'flex', alignItems:'center', gap:8}}>
+                            <div style={{
+                              padding:'4px 12px',
+                              borderRadius:999,
+                              background:config.bg,
+                              border:`1px solid ${config.color}`,
+                              color:config.color,
+                              fontSize:11,
+                              fontWeight:700,
+                              textTransform:'uppercase'
+                            }}>
+                              {config.label}
+                            </div>
+                            <div style={{
+                              fontSize:12,
+                              color:'rgba(148,163,184,0.7)',
+                              transition:'transform 0.3s',
+                              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
+                            }}>
+                              ▼
+                            </div>
+                          </div>
                         </div>
-                        <div style={{
-                          padding:'4px 12px',
-                          borderRadius:999,
-                          background:config.bg,
-                          border:`1px solid ${config.color}`,
-                          color:config.color,
-                          fontSize:11,
-                          fontWeight:700,
-                          textTransform:'uppercase'
-                        }}>
-                          {config.label}
-                        </div>
+                        
+                        {isExpanded && (
+                          <div style={{
+                            padding:'16px',
+                            background:'rgba(0,0,0,0.02)',
+                            borderTop:`1px solid ${config.color}20`
+                          }}>
+                            <div style={{display:'flex', flexDirection:'column', gap:12}}>
+                              {/* Summary Stats */}
+                              <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:8}}>
+                                <div style={{padding:'10px', background:'rgba(255,255,255,0.05)', borderRadius:8}}>
+                                  <div style={{fontSize:11, color:'rgba(148,163,184,0.8)', marginBottom:4}}>Active Issues</div>
+                                  <div style={{fontSize:18, fontWeight:700, color:config.color}}>
+                                    {mode.alertCount + mode.incidents.length}
+                                  </div>
+                                </div>
+                                <div style={{padding:'10px', background:'rgba(255,255,255,0.05)', borderRadius:8}}>
+                                  <div style={{fontSize:11, color:'rgba(148,163,184,0.8)', marginBottom:4}}>Routes Affected</div>
+                                  <div style={{fontSize:18, fontWeight:700}}>
+                                    {mode.affectedRoutes.length || 'None'}
+                                  </div>
+                                </div>
+                                <div style={{padding:'10px', background:'rgba(255,255,255,0.05)', borderRadius:8}}>
+                                  <div style={{fontSize:11, color:'rgba(148,163,184,0.8)', marginBottom:4}}>Max Delay</div>
+                                  <div style={{fontSize:18, fontWeight:700, color:mode.maxDelay > 0 ? '#ef4444' : '#10b981'}}>
+                                    {mode.maxDelay > 0 ? `${mode.maxDelay} min` : 'None'}
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              {/* Affected Routes */}
+                              {mode.affectedRoutes.length > 0 && (
+                                <div>
+                                  <div style={{fontSize:12, fontWeight:600, marginBottom:8, color:'rgba(71,85,105,0.9)'}}>
+                                    Affected Routes:
+                                  </div>
+                                  <div style={{display:'flex', flexWrap:'wrap', gap:6}}>
+                                    {mode.affectedRoutes.map((route, routeIdx) => (
+                                      <span
+                                        key={routeIdx}
+                                        style={{
+                                          padding:'6px 12px',
+                                          background:'rgba(59, 130, 246, 0.1)',
+                                          border:'1px solid rgba(59, 130, 246, 0.3)',
+                                          borderRadius:6,
+                                          fontSize:11,
+                                          fontWeight:600,
+                                          color:'#3b82f6'
+                                        }}
+                                      >
+                                        🚌 {route}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Active Alerts/Incidents */}
+                              {allItems.length > 0 ? (
+                                <div>
+                                  <div style={{fontSize:12, fontWeight:600, marginBottom:8, color:'rgba(71,85,105,0.9)'}}>
+                                    Active Issues:
+                                  </div>
+                                  <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                                    {allItems.slice(0, 3).map((item, itemIdx) => {
+                                      const isCritical = item.severity === 'critical' || item.severity === 'high' || item.severity === 'major'
+                                      const itemTitle = item.title || item.summary || 'Service Alert'
+                                      const itemLocation = item.location || ''
+                                      const itemDelay = item.expected_delay_min
+                                      
+                                      return (
+                                        <div
+                                          key={itemIdx}
+                                          style={{
+                                            padding:'10px 12px',
+                                            background:'rgba(255,255,255,0.05)',
+                                            border:`1px solid ${isCritical ? '#ef4444' : '#f59e0b'}40`,
+                                            borderRadius:8,
+                                            borderLeft:`3px solid ${isCritical ? '#ef4444' : '#f59e0b'}`
+                                          }}
+                                        >
+                                          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8, marginBottom:4}}>
+                                            <div style={{flex:1}}>
+                                              <div style={{fontSize:13, fontWeight:600, marginBottom:2}}>
+                                                {isCritical ? '🚨' : '⚠️'} {itemTitle}
+                                              </div>
+                                              {itemLocation && (
+                                                <div style={{fontSize:11, color:'rgba(100,116,139,0.9)'}}>
+                                                  📍 {itemLocation}
+                                                </div>
+                                              )}
+                                            </div>
+                                            {isCritical && (
+                                              <span style={{
+                                                padding:'2px 8px',
+                                                background:'rgba(239, 68, 68, 0.15)',
+                                                color:'#ef4444',
+                                                borderRadius:4,
+                                                fontSize:9,
+                                                fontWeight:700,
+                                                textTransform:'uppercase'
+                                              }}>
+                                                Critical
+                                              </span>
+                                            )}
+                                          </div>
+                                          {itemDelay && itemDelay > 0 && (
+                                            <div style={{
+                                              marginTop:6,
+                                              fontSize:11,
+                                              color:'#ef4444',
+                                              fontWeight:600
+                                            }}>
+                                              ⏳ Expected delay: ~{itemDelay} minutes
+                                            </div>
+                                          )}
+                                          {item.advice && (
+                                            <div style={{
+                                              marginTop:6,
+                                              padding:'6px 8px',
+                                              background:'rgba(59, 130, 246, 0.08)',
+                                              borderRadius:6,
+                                              fontSize:11,
+                                              color:'rgba(37, 99, 235, 0.95)',
+                                              lineHeight:1.4
+                                            }}>
+                                              💡 {item.advice}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )
+                                    })}
+                                    {allItems.length > 3 && (
+                                      <div style={{
+                                        textAlign:'center',
+                                        padding:'8px',
+                                        fontSize:11,
+                                        color:'rgba(100,116,139,0.8)',
+                                        fontStyle:'italic'
+                                      }}>
+                                        +{allItems.length - 3} more issue{allItems.length - 3 !== 1 ? 's' : ''} (view all alerts)
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{
+                                  textAlign:'center',
+                                  padding:'20px',
+                                  color:'rgba(148,163,184,0.7)',
+                                  fontSize:13
+                                }}>
+                                  ✅ No active issues - All services operating normally
+                                </div>
+                              )}
+                              
+                              {/* Last Update */}
+                              {lastTrafficUpdate && (
+                                <div style={{
+                                  fontSize:10,
+                                  color:'rgba(148,163,184,0.6)',
+                                  textAlign:'right',
+                                  marginTop:4
+                                }}>
+                                  Last updated: {getRelativeTime(lastTrafficUpdate)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -2551,12 +2981,40 @@ export default function App(){
                 padding:'24px',
                 boxShadow:'0 2px 8px rgba(0,0,0,0.04)'
               }}>
-                <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:20}}>
-                  <div style={{fontSize:28}}>🌤️</div>
-                  <div>
-                    <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Current Weather</h3>
-                    <p style={{fontSize:12, color:'#666666'}}>Auckland CBD conditions</p>
+                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20}}>
+                  <div style={{display:'flex', alignItems:'center', gap:12}}>
+                    <div style={{fontSize:28}}>🌤️</div>
+                    <div>
+                      <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Real-Time Weather</h3>
+                      <p style={{fontSize:12, color:'#666666'}}>Live conditions • Updates every 2 min</p>
+                    </div>
                   </div>
+                  {lastWeatherUpdate && (
+                    <div style={{
+                      display:'flex',
+                      alignItems:'center',
+                      gap:6,
+                      padding:'4px 10px',
+                      background:'rgba(16, 185, 129, 0.1)',
+                      borderRadius:12,
+                      fontSize:10,
+                      color:'#10b981',
+                      fontWeight:600
+                    }}>
+                      <span style={{
+                        width:8,
+                        height:8,
+                        borderRadius:'50%',
+                        background:'#10b981',
+                        animation:'pulse 1.5s ease-in-out infinite',
+                        boxShadow:'0 0 8px rgba(16, 185, 129, 0.8)'
+                      }}></span>
+                      <span style={{fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px'}}>LIVE</span>
+                      <span style={{fontSize:10}}>• {getRelativeTime(lastWeatherUpdate)}</span>
+                      {/* Hidden element to trigger re-render when timeTick changes */}
+                      <span style={{display:'none'}}>{timeTick}</span>
+                    </div>
+                  )}
                 </div>
                 {weather ? (
                   <div>
@@ -2589,6 +3047,181 @@ export default function App(){
                   </div>
                 )}
               </div>
+
+              {/* Traffic Alerts Widget */}
+              <div style={{
+                background:'rgba(0, 0, 0, 0.02)',
+                border:'1px solid rgba(0, 0, 0, 0.08)',
+                borderRadius:20,
+                padding:'24px',
+                boxShadow:'0 2px 8px rgba(0,0,0,0.04)'
+              }}>
+                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20}}>
+                  <div style={{display:'flex', alignItems:'center', gap:12}}>
+                    <div style={{fontSize:28}}>🚨</div>
+                    <div>
+                      <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Traffic Alerts</h3>
+                      <p style={{fontSize:12, color:'#666666'}}>Live incidents • Updates every 30s</p>
+                    </div>
+                  </div>
+                  {lastTrafficUpdate && (
+                    <div style={{
+                      display:'flex',
+                      alignItems:'center',
+                      gap:6,
+                      padding:'4px 10px',
+                      background:'rgba(239, 68, 68, 0.1)',
+                      borderRadius:12,
+                      fontSize:10,
+                      color:'#ef4444',
+                      fontWeight:600
+                    }}>
+                      <span style={{
+                        width:8,
+                        height:8,
+                        borderRadius:'50%',
+                        background:'#ef4444',
+                        animation:'pulse 1.5s ease-in-out infinite',
+                        boxShadow:'0 0 8px rgba(239, 68, 68, 0.8)'
+                      }}></span>
+                      <span style={{fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.5px'}}>LIVE</span>
+                      <span style={{fontSize:10}}>• {getRelativeTime(lastTrafficUpdate)}</span>
+                      {/* Hidden element to trigger re-render when timeTick changes */}
+                      <span style={{display:'none'}}>{timeTick}</span>
+                    </div>
+                  )}
+                </div>
+                {trafficIncidents && trafficIncidents.length > 0 ? (
+                  <div style={{display:'flex', flexDirection:'column', gap:12, maxHeight:'400px', overflowY:'auto'}}>
+                    {trafficIncidents.slice(0, 5).map((incident, idx) => {
+                      const isCritical = incident.severity === 'critical' || 
+                                       incident.severity === 'major' ||
+                                       incident.severity === 'high' ||
+                                       incident.type === 'accident' || 
+                                       incident.type === 'closure'
+                      const severityColor = isCritical ? '#ef4444' : '#f59e0b'
+                      const severityBg = isCritical ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)'
+                      const icon = isCritical ? '🚨' : '⚠️'
+                      
+                      return (
+                        <div
+                          key={incident.id || `traffic-${idx}`}
+                          style={{
+                            padding:'14px',
+                            background:'rgba(255,255,255,0.05)',
+                            border:`1px solid ${severityColor}40`,
+                            borderRadius:12,
+                            borderLeft:`4px solid ${severityColor}`
+                          }}
+                        >
+                          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:10, marginBottom:8}}>
+                            <div style={{display:'flex', gap:10, flex:1}}>
+                              <div style={{fontSize:20}}>{icon}</div>
+                              <div style={{flex:1}}>
+                                <div style={{fontSize:14, fontWeight:700, marginBottom:4, color:'rgba(15,23,42,0.9)'}}>
+                                  {incident.title || incident.summary || 'Traffic Incident'}
+                                </div>
+                                {incident.location && (
+                                  <div style={{fontSize:12, color:'rgba(100,116,139,0.9)', marginBottom:4}}>
+                                    📍 {incident.location}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div style={{
+                              padding:'4px 10px',
+                              background:severityBg,
+                              color:severityColor,
+                              borderRadius:999,
+                              fontSize:10,
+                              fontWeight:700,
+                              textTransform:'uppercase',
+                              whiteSpace:'nowrap'
+                            }}>
+                              {isCritical ? 'Critical' : incident.severity || 'Moderate'}
+                            </div>
+                          </div>
+                          {incident.description && (
+                            <div style={{fontSize:12, color:'rgba(71,85,105,0.9)', marginTop:6, lineHeight:1.5}}>
+                              {incident.description}
+                            </div>
+                          )}
+                          <div style={{display:'flex', gap:8, marginTop:8, flexWrap:'wrap'}}>
+                            {incident.expected_delay_min && (
+                              <span style={{
+                                padding:'4px 8px',
+                                background:'rgba(239, 68, 68, 0.1)',
+                                borderRadius:6,
+                                fontSize:11,
+                                fontWeight:600,
+                                color:'#ef4444'
+                              }}>
+                                ⏳ ~{incident.expected_delay_min} min delay
+                              </span>
+                            )}
+                            {incident.affected_routes && Array.isArray(incident.affected_routes) && incident.affected_routes.length > 0 && (
+                              <span style={{
+                                padding:'4px 8px',
+                                background:'rgba(59, 130, 246, 0.1)',
+                                borderRadius:6,
+                                fontSize:11,
+                                fontWeight:600,
+                                color:'#3b82f6'
+                              }}>
+                                🚌 {incident.affected_routes.slice(0, 3).join(', ')}
+                                {incident.affected_routes.length > 3 && ` +${incident.affected_routes.length - 3}`}
+                              </span>
+                            )}
+                            {incident.start_time && (
+                              <span style={{
+                                padding:'4px 8px',
+                                background:'rgba(148, 163, 184, 0.1)',
+                                borderRadius:6,
+                                fontSize:11,
+                                fontWeight:600,
+                                color:'rgba(71, 85, 105, 0.9)'
+                              }}>
+                                🕐 {new Date(incident.start_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                              </span>
+                            )}
+                          </div>
+                          {incident.advice && (
+                            <div style={{
+                              marginTop:10,
+                              padding:'8px 10px',
+                              background:'rgba(59, 130, 246, 0.08)',
+                              borderRadius:8,
+                              border:'1px solid rgba(59, 130, 246, 0.2)',
+                              fontSize:11,
+                              color:'rgba(37, 99, 235, 0.95)',
+                              lineHeight:1.4
+                            }}>
+                              💡 <strong>Tip:</strong> {incident.advice}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {trafficIncidents.length > 5 && (
+                      <div style={{
+                        textAlign:'center',
+                        padding:'8px',
+                        fontSize:12,
+                        color:'rgba(100,116,139,0.8)',
+                        fontStyle:'italic'
+                      }}>
+                        +{trafficIncidents.length - 5} more incident{trafficIncidents.length - 5 !== 1 ? 's' : ''} (view on map)
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{textAlign:'center', padding:'40px 0', color:'rgba(148,163,184,0.7)'}}>
+                    <div style={{fontSize:48, marginBottom:12}}>✅</div>
+                    <div style={{fontSize:14, fontWeight:600, marginBottom:4}}>No Traffic Alerts</div>
+                    <div style={{fontSize:12}}>All routes operating normally</div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Live Departure Board - Full Width */}
@@ -2605,7 +3238,7 @@ export default function App(){
                   <div style={{fontSize:28}}>🚏</div>
                   <div>
                     <h3 style={{fontSize:18, fontWeight:700, marginBottom:2}}>Live Departure Board</h3>
-                    <p style={{fontSize:12, color:'#666666'}}>Next departures from nearby stops</p>
+                    <p style={{fontSize:12, color:'#666666'}}>Real-time departures from nearby stops</p>
                   </div>
                 </div>
                 <div style={{display:'flex', alignItems:'center', gap:12}}>
@@ -2650,6 +3283,56 @@ export default function App(){
                 </div>
               </div>
 
+              {/* Summary Statistics */}
+              {liveDepartures.length > 0 && (
+                <div style={{
+                  display:'grid',
+                  gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))',
+                  gap:12,
+                  marginBottom:20,
+                  padding:'16px',
+                  background:'rgba(255,255,255,0.05)',
+                  borderRadius:12,
+                  border:'1px solid rgba(255,255,255,0.1)'
+                }}>
+                  <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:11, color:'rgba(148,163,184,0.8)', marginBottom:4}}>Stops Monitored</div>
+                    <div style={{fontSize:24, fontWeight:700, color:'#3b82f6'}}>
+                      {liveDepartures.length}
+                    </div>
+                  </div>
+                  <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:11, color:'rgba(148,163,184,0.8)', marginBottom:4}}>Total Departures</div>
+                    <div style={{fontSize:24, fontWeight:700, color:'#10b981'}}>
+                      {liveDepartures.reduce((sum, stop) => sum + (stop.departures?.length || 0), 0)}
+                    </div>
+                  </div>
+                  <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:11, color:'rgba(148,163,184,0.8)', marginBottom:4}}>Next Departure</div>
+                    <div style={{fontSize:24, fontWeight:700, color:'#f59e0b'}}>
+                      {(() => {
+                        const allDeps = liveDepartures.flatMap(s => s.departures || [])
+                        if (allDeps.length === 0) return 'N/A'
+                        const sorted = allDeps
+                          .map(d => ({ dep: d, mins: getMinutesUntil(d.departure_time) }))
+                          .filter(d => d.mins !== null && d.mins >= 0)
+                          .sort((a, b) => a.mins - b.mins)
+                        if (sorted.length === 0) return 'N/A'
+                        return sorted[0].mins === 0 ? 'NOW' : `${sorted[0].mins}m`
+                      })()}
+                    </div>
+                  </div>
+                  <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:11, color:'rgba(148,163,184,0.8)', marginBottom:4}}>Real-time Services</div>
+                    <div style={{fontSize:24, fontWeight:700, color:'#10b981'}}>
+                      {liveDepartures.reduce((sum, stop) => 
+                        sum + (stop.departures?.filter(d => d.realtime).length || 0), 0
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {departuresLoading && liveDepartures.length === 0 ? (
                 <div style={{textAlign:'center', padding:'40px 0', color:'#666666'}}>
                   <div style={{fontSize:48, marginBottom:12}}>🔄</div>
@@ -2666,6 +3349,11 @@ export default function App(){
                   {liveDepartures.map((stopData, idx) => {
                     const isExpanded = expandedStops[stopData.stopId]
                     const displayDeps = isExpanded ? stopData.departures : stopData.departures.slice(0, 3)
+                    const stopInfo = stops.find(s => s.stop_id === stopData.stopId)
+                    const totalDeps = stopData.departures?.length || 0
+                    const realtimeCount = stopData.departures?.filter(d => d.realtime).length || 0
+                    const delayedCount = stopData.departures?.filter(d => d.delay_min && d.delay_min > 2).length || 0
+                    const accessibleCount = stopData.departures?.filter(d => d.accessible).length || 0
                     
                     const getOccupancyInfo = (occupancy) => {
                       const info = {
@@ -2700,29 +3388,77 @@ export default function App(){
                         <div
                           onClick={() => setExpandedStops(prev => ({...prev, [stopData.stopId]: !prev[stopData.stopId]}))}
                           style={{
-                            fontSize:14,
-                            fontWeight:700,
                             marginBottom:12,
-                            paddingBottom:10,
+                            paddingBottom:12,
                             borderBottom:'1px solid rgba(255,255,255,0.1)',
-                            display:'flex',
-                            alignItems:'center',
-                            justifyContent:'space-between',
-                            gap:8
+                            cursor:'pointer'
                           }}
                         >
-                          <div style={{display:'flex', alignItems:'center', gap:8}}>
-                            <span style={{fontSize:18}}>📍</span>
-                            {stopData.stopName}
-                          </div>
-                          <div style={{display:'flex', alignItems:'center', gap:8}}>
-                            <div style={{fontSize:10, color:'rgba(148,163,184,0.8)', fontWeight:500}}>
-                              {stopData.departures.length} services
+                          <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:6}}>
+                            <div style={{display:'flex', alignItems:'center', gap:8, flex:1}}>
+                              <span style={{fontSize:18}}>📍</span>
+                              <div style={{flex:1}}>
+                                <div style={{fontSize:14, fontWeight:700, marginBottom:2}}>
+                                  {stopData.stopName}
+                                </div>
+                                {stopInfo && (
+                                  <div style={{fontSize:11, color:'rgba(148,163,184,0.8)', display:'flex', alignItems:'center', gap:6}}>
+                                    {stopInfo.distance_m && (
+                                      <span>📏 {stopInfo.distance_m}m away</span>
+                                    )}
+                                    {stopData.stopId && (
+                                      <span>• ID: {stopData.stopId}</span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                            <span style={{fontSize:16, transition:'transform 0.3s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)'}}>
-                              ▼
-                            </span>
+                            <div style={{display:'flex', alignItems:'center', gap:8}}>
+                              <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:2}}>
+                                <div style={{fontSize:12, fontWeight:600, color:'#3b82f6'}}>
+                                  {totalDeps} {totalDeps === 1 ? 'service' : 'services'}
+                                </div>
+                                {realtimeCount > 0 && (
+                                  <div style={{fontSize:9, color:'#10b981', fontWeight:600}}>
+                                    {realtimeCount} real-time
+                                  </div>
+                                )}
+                              </div>
+                              <span style={{fontSize:16, transition:'transform 0.3s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0)', color:'rgba(148,163,184,0.7)'}}>
+                                ▼
+                              </span>
+                            </div>
                           </div>
+                          {isExpanded && (
+                            <div style={{
+                              display:'grid',
+                              gridTemplateColumns:'repeat(4, 1fr)',
+                              gap:8,
+                              marginTop:8,
+                              padding:'10px',
+                              background:'rgba(0,0,0,0.02)',
+                              borderRadius:8
+                            }}>
+                              <div style={{textAlign:'center'}}>
+                                <div style={{fontSize:10, color:'rgba(148,163,184,0.8)', marginBottom:2}}>Total</div>
+                                <div style={{fontSize:16, fontWeight:700}}>{totalDeps}</div>
+                              </div>
+                              <div style={{textAlign:'center'}}>
+                                <div style={{fontSize:10, color:'rgba(148,163,184,0.8)', marginBottom:2}}>Real-time</div>
+                                <div style={{fontSize:16, fontWeight:700, color:'#10b981'}}>{realtimeCount}</div>
+                              </div>
+                              <div style={{textAlign:'center'}}>
+                                <div style={{fontSize:10, color:'rgba(148,163,184,0.8)', marginBottom:2}}>Delayed</div>
+                                <div style={{fontSize:16, fontWeight:700, color:delayedCount > 0 ? '#ef4444' : '#10b981'}}>
+                                  {delayedCount}
+                                </div>
+                              </div>
+                              <div style={{textAlign:'center'}}>
+                                <div style={{fontSize:10, color:'rgba(148,163,184,0.8)', marginBottom:2}}>Accessible</div>
+                                <div style={{fontSize:16, fontWeight:700, color:'#3b82f6'}}>{accessibleCount}</div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                         
                         {stopData.departures.length === 0 ? (
@@ -2856,15 +3592,17 @@ export default function App(){
                                   setExpandedStops(prev => ({...prev, [stopData.stopId]: true}))
                                 }}
                                 style={{
-                                  padding:'8px',
+                                  padding:'10px',
                                   background:'rgba(245,158,11,0.15)',
                                   border:'1px solid rgba(245,158,11,0.3)',
                                   borderRadius:8,
                                   color:'#f59e0b',
-                                  fontSize:11,
+                                  fontSize:12,
                                   fontWeight:600,
                                   cursor:'pointer',
-                                  transition:'all 0.3s'
+                                  transition:'all 0.3s',
+                                  width:'100%',
+                                  marginTop:8
                                 }}
                                 onMouseEnter={(e) => {
                                   e.currentTarget.style.background = 'rgba(245,158,11,0.25)'
@@ -2873,8 +3611,20 @@ export default function App(){
                                   e.currentTarget.style.background = 'rgba(245,158,11,0.15)'
                                 }}
                               >
-                                Show {stopData.departures.length - 3} more departures ↓
+                                View all {stopData.departures.length} departures ↓
                               </button>
+                            )}
+                            {isExpanded && stopData.departures.length > 0 && (
+                              <div style={{
+                                marginTop:12,
+                                paddingTop:12,
+                                borderTop:'1px solid rgba(255,255,255,0.1)',
+                                fontSize:10,
+                                color:'rgba(148,163,184,0.7)',
+                                textAlign:'right'
+                              }}>
+                                Last updated: {stopData.departures[0]?.fetchedAt ? getRelativeTime(stopData.departures[0].fetchedAt) : 'Just now'}
+                              </div>
                             )}
                           </div>
                         )}
@@ -3056,7 +3806,28 @@ export default function App(){
           <FeatureCard icon="⚡" title={text.realTimeSnapshot} description="Live traffic, weather and notifications so riders stay ahead.">
             <div style={{display:'flex', flexWrap:'wrap', gap:16}}>
               <div style={{flex:'1 1 200px', minWidth:220}}>
-                <div style={{fontWeight:600, marginBottom:6}}>{text.weatherNow}</div>
+                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6}}>
+                  <div style={{fontWeight:600}}>{text.weatherNow}</div>
+                  {lastWeatherUpdate && (
+                    <div style={{
+                      display:'flex',
+                      alignItems:'center',
+                      gap:4,
+                      fontSize:10,
+                      color:'#10b981',
+                      fontWeight:600
+                    }}>
+                      <span style={{
+                        width:4,
+                        height:4,
+                        borderRadius:'50%',
+                        background:'#10b981',
+                        animation:'pulse 2s ease-in-out infinite'
+                      }}></span>
+                      {getRelativeTime(lastWeatherUpdate)}
+                    </div>
+                  )}
+                </div>
                 {weather ? (
                   <div>
                     <div style={{fontSize:18, fontWeight:700}}>{weather.condition}</div>
@@ -4102,26 +4873,361 @@ export default function App(){
           </FeatureCard>
 
           <FeatureCard icon="🚍" title="Nearby Transit" description="Check nearby stops, live departures, and multimodal choices.">
-            <div style={{display:'flex', flexDirection:'column', gap:18}}>
-              <div style={{display:'flex', flexWrap:'wrap', gap:12}}>
-                {stops.slice(0,6).map(s => (
-                  <div key={s.stop_id} style={{padding:12, border:'1px solid var(--line,#e5e7eb)', borderRadius:12, background:'var(--card,#fff)', minWidth:180}}>
-                    <div style={{fontWeight:700}}>{s.name}</div>
-                    <div style={{opacity:0.7, fontSize:12}}>{s.distance_m} m away</div>
-                    <div style={{marginTop:10}}><button className="btn" onClick={()=>viewDepartures(s)}>Live departures</button></div>
+            <div style={{display:'flex', flexDirection:'column', gap:20}}>
+              {/* Summary Statistics */}
+              {stops.length > 0 && (
+                <div style={{
+                  display:'grid',
+                  gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))',
+                  gap:12,
+                  padding:'16px',
+                  background:'rgba(0, 0, 0, 0.02)',
+                  borderRadius:12,
+                  border:'1px solid rgba(0, 0, 0, 0.08)'
+                }}>
+                  <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:11, color:'rgba(100,116,139,0.8)', marginBottom:4}}>Total Stops</div>
+                    <div style={{fontSize:24, fontWeight:700, color:'#3b82f6'}}>{stops.length}</div>
                   </div>
-                ))}
-                {stops.length===0 && <div style={{opacity:0.7}}>Searching for nearby stops…</div>}
-              </div>
+                  <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:11, color:'rgba(100,116,139,0.8)', marginBottom:4}}>Nearest</div>
+                    <div style={{fontSize:24, fontWeight:700, color:'#10b981'}}>
+                      {stops[0]?.distance_m ? `${stops[0].distance_m}m` : 'N/A'}
+                    </div>
+                  </div>
+                  <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:11, color:'rgba(100,116,139,0.8)', marginBottom:4}}>Within 500m</div>
+                    <div style={{fontSize:24, fontWeight:700, color:'#f59e0b'}}>
+                      {stops.filter(s => s.distance_m <= 500).length}
+                    </div>
+                  </div>
+                  <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:11, color:'rgba(100,116,139,0.8)', marginBottom:4}}>Search Radius</div>
+                    <div style={{fontSize:24, fontWeight:700, color:'#8b5cf6'}}>900m</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Stops List */}
+              {stops.length === 0 ? (
+                <div style={{
+                  textAlign:'center',
+                  padding:'60px 20px',
+                  color:'rgba(100,116,139,0.7)'
+                }}>
+                  <div style={{fontSize:48, marginBottom:12}}>🔍</div>
+                  <div style={{fontSize:16, fontWeight:600, marginBottom:4}}>Searching for nearby stops…</div>
+                  <div style={{fontSize:13}}>Finding transit stops within 900m radius</div>
+                </div>
+              ) : (
+                <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:16}}>
+                  {stops.slice(0, 12).map(s => {
+                    const stopDepartures = liveDepartures.find(sd => sd.stopId === s.stop_id)
+                    const depCount = stopDepartures?.departures?.length || 0
+                    const isSelected = selectedStop?.stop_id === s.stop_id
+                    
+                    return (
+                      <div
+                        key={s.stop_id}
+                        onClick={() => viewDepartures(s)}
+                        style={{
+                          padding:'16px',
+                          border:`2px solid ${isSelected ? '#3b82f6' : 'rgba(0, 0, 0, 0.08)'}`,
+                          borderRadius:16,
+                          background:isSelected ? 'rgba(59, 130, 246, 0.05)' : 'rgba(255,255,255,0.05)',
+                          cursor:'pointer',
+                          transition:'all 0.3s',
+                          boxShadow:isSelected ? '0 4px 12px rgba(59, 130, 246, 0.2)' : '0 2px 8px rgba(0,0,0,0.04)'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.borderColor = '#3b82f6'
+                            e.currentTarget.style.background = 'rgba(59, 130, 246, 0.03)'
+                            e.currentTarget.style.transform = 'translateY(-2px)'
+                            e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.15)'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.borderColor = 'rgba(0, 0, 0, 0.08)'
+                            e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+                            e.currentTarget.style.transform = 'translateY(0)'
+                            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)'
+                          }
+                        }}
+                      >
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, marginBottom:12}}>
+                          <div style={{
+                            fontSize:32,
+                            padding:'8px',
+                            background:'rgba(59, 130, 246, 0.1)',
+                            borderRadius:10,
+                            width:48,
+                            height:48,
+                            display:'flex',
+                            alignItems:'center',
+                            justifyContent:'center'
+                          }}>
+                            🚏
+                          </div>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:15, fontWeight:700, marginBottom:4, color:'rgba(15,23,42,0.9)'}}>
+                              {s.name || s.stop_name || 'Unknown Stop'}
+                            </div>
+                            <div style={{fontSize:12, color:'rgba(100,116,139,0.9)', marginBottom:6}}>
+                              📏 {s.distance_m || 0}m away
+                            </div>
+                            {s.stop_id && (
+                              <div style={{fontSize:10, color:'rgba(148,163,184,0.7)', fontFamily:'monospace'}}>
+                                ID: {s.stop_id}
+                              </div>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <div style={{
+                              padding:'4px 8px',
+                              background:'rgba(59, 130, 246, 0.15)',
+                              color:'#3b82f6',
+                              borderRadius:6,
+                              fontSize:10,
+                              fontWeight:700,
+                              textTransform:'uppercase'
+                            }}>
+                              Selected
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div style={{
+                          display:'flex',
+                          justifyContent:'space-between',
+                          alignItems:'center',
+                          padding:'10px',
+                          background:'rgba(0,0,0,0.02)',
+                          borderRadius:8,
+                          marginTop:8
+                        }}>
+                          <div>
+                            <div style={{fontSize:11, color:'rgba(100,116,139,0.8)', marginBottom:2}}>Departures</div>
+                            <div style={{fontSize:16, fontWeight:700, color:depCount > 0 ? '#10b981' : '#f59e0b'}}>
+                              {depCount > 0 ? depCount : 'Loading...'}
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              viewDepartures(s)
+                            }}
+                            style={{
+                              padding:'6px 14px',
+                              background:'rgba(59, 130, 246, 0.15)',
+                              border:'1px solid rgba(59, 130, 246, 0.3)',
+                              borderRadius:8,
+                              color:'#3b82f6',
+                              fontSize:12,
+                              fontWeight:600,
+                              cursor:'pointer',
+                              transition:'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'rgba(59, 130, 246, 0.25)'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'rgba(59, 130, 246, 0.15)'
+                            }}
+                          >
+                            View Details →
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Selected Stop Departures - Enhanced */}
               {selectedStop && (
-                <div style={{border:'1px solid var(--line,#e5e7eb)', borderRadius:12, padding:16, background:'var(--card,#fff)'}}>
-                  <div style={{fontWeight:700, marginBottom:8}}>Departures — {selectedStop.name}</div>
-                  <ul style={{margin:0, paddingLeft:18}}>
-                    {departures.map((d,i)=>(
-                      <li key={i}><strong>{d.route}</strong> → {d.headsign} <span style={{opacity:0.65}}>in {d.departure_in_min} min</span></li>
-                    ))}
-                    {departures.length===0 && <li style={{opacity:0.65}}>Loading departures…</li>}
-                  </ul>
+                <div style={{
+                  border:'2px solid rgba(59, 130, 246, 0.3)',
+                  borderRadius:16,
+                  padding:'20px',
+                  background:'rgba(59, 130, 246, 0.05)',
+                  boxShadow:'0 4px 16px rgba(59, 130, 246, 0.15)'
+                }}>
+                  <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16}}>
+                    <div>
+                      <div style={{fontSize:18, fontWeight:700, marginBottom:4}}>
+                        🚏 {selectedStop.name || selectedStop.stop_name}
+                      </div>
+                      <div style={{fontSize:12, color:'rgba(100,116,139,0.9)'}}>
+                        {selectedStop.distance_m ? `${selectedStop.distance_m}m away` : ''}
+                        {selectedStop.stop_id && ` • ID: ${selectedStop.stop_id}`}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setSelectedStop(null)}
+                      style={{
+                        padding:'6px 12px',
+                        background:'rgba(239, 68, 68, 0.1)',
+                        border:'1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius:8,
+                        color:'#ef4444',
+                        fontSize:11,
+                        fontWeight:600,
+                        cursor:'pointer'
+                      }}
+                    >
+                      ✕ Close
+                    </button>
+                  </div>
+
+                  {departures.length === 0 ? (
+                    <div style={{textAlign:'center', padding:'40px 0', color:'rgba(100,116,139,0.7)'}}>
+                      <div style={{fontSize:32, marginBottom:8}}>⏳</div>
+                      <div style={{fontSize:14}}>Loading departures…</div>
+                    </div>
+                  ) : (
+                    <div style={{display:'flex', flexDirection:'column', gap:10}}>
+                      <div style={{
+                        display:'grid',
+                        gridTemplateColumns:'repeat(3, 1fr)',
+                        gap:8,
+                        marginBottom:12,
+                        padding:'12px',
+                        background:'rgba(255,255,255,0.1)',
+                        borderRadius:10
+                      }}>
+                        <div style={{textAlign:'center'}}>
+                          <div style={{fontSize:10, color:'rgba(100,116,139,0.8)', marginBottom:2}}>Total</div>
+                          <div style={{fontSize:18, fontWeight:700}}>{departures.length}</div>
+                        </div>
+                        <div style={{textAlign:'center'}}>
+                          <div style={{fontSize:10, color:'rgba(100,116,139,0.8)', marginBottom:2}}>Next</div>
+                          <div style={{fontSize:18, fontWeight:700, color:'#10b981'}}>
+                            {departures[0]?.departure_in_min || 0}m
+                          </div>
+                        </div>
+                        <div style={{textAlign:'center'}}>
+                          <div style={{fontSize:10, color:'rgba(100,116,139,0.8)', marginBottom:2}}>Real-time</div>
+                          <div style={{fontSize:18, fontWeight:700, color:'#3b82f6'}}>
+                            {departures.filter(d => d.realtime).length}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{display:'flex', flexDirection:'column', gap:8}}>
+                        {departures.slice(0, 10).map((d, i) => {
+                          const minsUntil = d.departure_in_min || getMinutesUntil(d.departure_time)
+                          const isImmediate = minsUntil !== null && minsUntil <= 5
+                          const isDelayed = d.delay_min && d.delay_min > 2
+                          
+                          return (
+                            <div
+                              key={i}
+                              style={{
+                                padding:'12px 14px',
+                                background:isImmediate ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.05)',
+                                border:`1px solid ${isImmediate ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.1)'}`,
+                                borderRadius:10,
+                                display:'flex',
+                                justifyContent:'space-between',
+                                alignItems:'center'
+                              }}
+                            >
+                              <div style={{flex:1}}>
+                                <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:4}}>
+                                  <div style={{
+                                    padding:'4px 10px',
+                                    background:'rgba(245,158,11,0.25)',
+                                    border:'1px solid rgba(245,158,11,0.5)',
+                                    borderRadius:8,
+                                    fontSize:13,
+                                    fontWeight:800,
+                                    color:'#f59e0b'
+                                  }}>
+                                    {d.route || 'N/A'}
+                                  </div>
+                                  {d.service_type === 'express' && (
+                                    <span style={{
+                                      padding:'2px 6px',
+                                      background:'rgba(139,92,246,0.2)',
+                                      borderRadius:4,
+                                      fontSize:9,
+                                      fontWeight:700,
+                                      color:'#a78bfa',
+                                      textTransform:'uppercase'
+                                    }}>
+                                      Express
+                                    </span>
+                                  )}
+                                  {d.realtime && (
+                                    <span style={{
+                                      fontSize:9,
+                                      color:'#10b981',
+                                      fontWeight:600,
+                                      display:'flex',
+                                      alignItems:'center',
+                                      gap:4
+                                    }}>
+                                      <span style={{
+                                        width:6,
+                                        height:6,
+                                        borderRadius:'50%',
+                                        background:'#10b981',
+                                        animation:'pulse 2s infinite'
+                                      }}></span>
+                                      LIVE
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{fontSize:14, fontWeight:600, marginBottom:2}}>
+                                  → {d.headsign || 'Unknown destination'}
+                                </div>
+                                <div style={{fontSize:11, color:'rgba(100,116,139,0.8)', display:'flex', gap:8, flexWrap:'wrap'}}>
+                                  {d.platform && <span>🚏 {d.platform}</span>}
+                                  {d.vehicle_type && <span>🚌 {d.vehicle_type}</span>}
+                                  {d.accessible && <span>♿ Accessible</span>}
+                                </div>
+                                {isDelayed && (
+                                  <div style={{
+                                    marginTop:6,
+                                    fontSize:10,
+                                    color:'#ef4444',
+                                    fontWeight:600
+                                  }}>
+                                    ⚠️ Delayed {d.delay_min} min
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{textAlign:'right', marginLeft:16}}>
+                                <div style={{
+                                  fontSize:20,
+                                  fontWeight:800,
+                                  color:isImmediate ? '#ef4444' : '#1a1a1a'
+                                }}>
+                                  {minsUntil !== null ? (minsUntil <= 0 ? 'NOW' : `${minsUntil}m`) : 'N/A'}
+                                </div>
+                                <div style={{fontSize:10, color:'rgba(100,116,139,0.7)', marginTop:2}}>
+                                  {d.departure_time ? new Date(d.departure_time).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : ''}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                        {departures.length > 10 && (
+                          <div style={{
+                            textAlign:'center',
+                            padding:'8px',
+                            fontSize:11,
+                            color:'rgba(100,116,139,0.7)',
+                            fontStyle:'italic'
+                          }}>
+                            +{departures.length - 10} more departures
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
