@@ -837,18 +837,89 @@ npm start
 
 ### Production Deployment
 
-- **Backend:** FastAPI with Uvicorn on port 8000
-- **Frontend:** React build served via static hosting
-- **Database:** SQLite file-based storage
-- **CORS:** Configured for cross-origin requests
-- **Environment Variables:** API keys and secrets
+The ATIS system is deployed using a modern cloud infrastructure:
+
+#### Backend Deployment (Render)
+- **Platform:** Render.com
+- **Service Type:** Web Service
+- **Runtime:** Python 3.11+
+- **Framework:** FastAPI with Uvicorn
+- **Database:** SQLite (file-based, auto-initialized on deployment)
+- **Configuration:** `render.yaml` or `Procfile`
+- **Build Command:** `pip install -r requirements.txt && python app/init_db.py`
+- **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- **Health Check:** `/health` endpoint
+- **CORS:** Configurable via `CORS_ORIGINS` environment variable
+
+**Backend Environment Variables:**
+- `CORS_ORIGINS` - Frontend URL(s) for CORS (comma-separated)
+- `PYTHON_VERSION` - Python version (3.11.0)
+- `PORT` - Server port (auto-set by Render)
+
+#### Frontend Deployment (Vercel)
+- **Platform:** Vercel.com
+- **Framework:** Create React App
+- **Build Tool:** React Scripts
+- **Build Command:** `npm run build`
+- **Output Directory:** `build`
+- **Configuration:** `vercel.json`
+- **Static Hosting:** Optimized CDN delivery
+- **Automatic Deployments:** On git push
+
+**Frontend Environment Variables:**
+- `REACT_APP_API_URL` - Backend API URL (e.g., `https://atis-backend.onrender.com`)
+
+#### Deployment Architecture
+
+```
+┌─────────────────────────────────────────┐
+│         Vercel (Frontend)                │
+│  https://atis-frontend.vercel.app       │
+│  - React SPA                             │
+│  - Static assets via CDN                │
+│  - Environment: REACT_APP_API_URL       │
+└─────────────────────────────────────────┘
+                    ↕ HTTPS
+┌─────────────────────────────────────────┐
+│         Render (Backend)                 │
+│  https://atis-backend.onrender.com      │
+│  - FastAPI REST API                     │
+│  - SQLite Database                       │
+│  - Environment: CORS_ORIGINS             │
+└─────────────────────────────────────────┘
+```
+
+### Deployment Process
+
+1. **Backend (Render):**
+   - Connect GitHub repository
+   - Set root directory: `atis-backend`
+   - Configure build and start commands
+   - Set environment variables
+   - Deploy automatically on git push
+
+2. **Frontend (Vercel):**
+   - Import GitHub repository
+   - Set root directory: `atis-frontend-react`
+   - Configure environment variables
+   - Deploy automatically on git push
+
+3. **Post-Deployment:**
+   - Update `CORS_ORIGINS` in Render with Vercel frontend URL
+   - Verify API connectivity
+   - Test authentication flow
+   - Verify real-time features
 
 ### System Requirements
 
-- **Backend:** Python 3.11+, 512MB RAM minimum
+- **Backend:** Python 3.11+, 512MB RAM minimum (Render free tier)
 - **Frontend:** Modern browser (Chrome, Firefox, Safari, Edge)
 - **Database:** SQLite (file-based, no separate server needed)
 - **Network:** Internet connection for external APIs
+- **Free Tier Considerations:**
+  - Render free tier spins down after 15 minutes of inactivity
+  - First request after spin-down may take 30-60 seconds
+  - Vercel free tier includes generous bandwidth and build minutes
 
 ---
 
