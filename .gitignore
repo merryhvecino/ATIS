@@ -12,6 +12,7 @@ env/
 .pytest_cache/
 *.db
 *.sqlite3
+*.sqlite
 
 # Node
 node_modules/
@@ -33,3 +34,19 @@ dist/
 .env
 .env.local
 .env.*.local
+.env.production
+
+# Deployment
+.vercel/
+.render/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.bak
+*.cache

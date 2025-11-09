@@ -3,7 +3,8 @@ import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Circle, Polyline,
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 
-const API = '' // CRA proxy forwards to backend
+// API URL - uses environment variable in production, empty string for dev proxy
+const API = process.env.REACT_APP_API_URL || '' // CRA proxy forwards to backend in dev
 
 // Fix Leaflet default icon issue with webpack
 delete L.Icon.Default.prototype._getIconUrl
@@ -260,6 +261,18 @@ function DraggableMarker({ position, setPosition, label }) {
       const pos = marker.getLatLng()
       setPosition([pos.lat, pos.lng])
     },
+    click(e) {
+      // Stop event propagation to prevent map click handler
+      if (e.originalEvent) {
+        e.originalEvent.stopPropagation()
+      }
+    },
+    dragstart(e) {
+      // Stop event propagation when dragging starts
+      if (e.originalEvent) {
+        e.originalEvent.stopPropagation()
+      }
+    }
   }
 
   return (
@@ -269,30 +282,69 @@ function DraggableMarker({ position, setPosition, label }) {
       position={position}
       icon={mapIcons.origin}
     >
-      <Popup minWidth={90}>
-        <span onClick={() => setDraggable((d) => !d)}>
-          {label}<br/>
-          <small style={{color:'#666'}}>{draggable ? 'Draggable' : 'Click to make draggable'}</small>
-        </span>
+      <Popup minWidth={120}>
+        <div onClick={(e) => e.stopPropagation()}>
+          <div style={{marginBottom: 4}}>{label}</div>
+          <button
+            onClick={() => setDraggable((d) => !d)}
+            style={{
+              padding: '4px 8px',
+              background: draggable ? '#10b981' : '#f59e0b',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              fontSize: 11,
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            {draggable ? '✓ Draggable' : 'Click to enable drag'}
+          </button>
+        </div>
       </Popup>
     </Marker>
   )
 }
 
 function MapClickHandler({ onMapClick }) {
+  const clickTimeoutRef = useRef(null)
+  
   useMapEvents({
     click(e) {
-      if (onMapClick) {
-        onMapClick([e.latlng.lat, e.latlng.lng])
+      // Clear any pending timeout
+      if (clickTimeoutRef.current) {
+        clearTimeout(clickTimeoutRef.current)
+      }
+      
+      // Set destination when clicking on the map
+      // Use a small delay to allow marker clicks to prevent this
+      if (onMapClick && e.latlng) {
+        clickTimeoutRef.current = setTimeout(() => {
+          // Check if click was on a marker by checking the target
+          const target = e.originalEvent?.target
+          if (target && !target.closest('.leaflet-marker-icon') && !target.closest('.leaflet-popup')) {
+            onMapClick([e.latlng.lat, e.latlng.lng])
+          }
+        }, 50)
       }
     },
   })
+  
+  useEffect(() => {
+    return () => {
+      if (clickTimeoutRef.current) {
+        clearTimeout(clickTimeoutRef.current)
+      }
+    }
+  }, [])
+  
   return null
 }
 
-// Component to handle "My Location" button
-function RecenterButton({ position }) {
+// Component to handle "My Location" button with geolocation
+function RecenterButton({ position, onLocationUpdate }) {
   const map = useMap()
+  const [isLocating, setIsLocating] = useState(false)
   
   const recenter = () => {
     map.flyTo(position, 15, {
@@ -300,44 +352,217 @@ function RecenterButton({ position }) {
     })
   }
   
+  const getMyLocation = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser')
+      return
+    }
+    
+    setIsLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude
+        const lng = position.coords.longitude
+        const newPos = [lat, lng]
+        
+        // Update origin if callback provided
+        if (onLocationUpdate) {
+          onLocationUpdate(newPos)
+        }
+        
+        // Fly to location
+        map.flyTo(newPos, 15, {
+          duration: 1.5
+        })
+        
+        setIsLocating(false)
+      },
+      (error) => {
+        console.error('Geolocation error:', error)
+        alert('Unable to get your location. Please check your browser permissions.')
+        setIsLocating(false)
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    )
+  }
+  
   return (
-    <button
-      onClick={recenter}
-      style={{
-        position: 'absolute',
-        top: 64,
-        right: 10,
-        zIndex: 1000,
-        padding: '10px 16px',
-        background: 'white',
-        border: '2px solid rgba(0,0,0,0.2)',
-        borderRadius: 8,
-        cursor: 'pointer',
-        fontSize: 14,
-        fontWeight: 600,
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        transition: 'all 0.2s',
-        minWidth: 200
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = '#333333'
-        e.currentTarget.style.color = 'white'
-        e.currentTarget.style.transform = 'translateY(-2px)'
-        e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.15)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'white'
-        e.currentTarget.style.color = '#333'
-        e.currentTarget.style.transform = 'translateY(0)'
-        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)'
-      }}
-      title="Center map on your origin location"
-    >
-      📍 My Location
-    </button>
+    <div style={{
+      position: 'absolute',
+      top: 64,
+      right: 10,
+      zIndex: 1000,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 8
+    }}>
+      <button
+        onClick={getMyLocation}
+        disabled={isLocating}
+        style={{
+          padding: '10px 16px',
+          background: isLocating ? '#10b981' : 'white',
+          color: isLocating ? 'white' : '#333',
+          border: '2px solid rgba(0,0,0,0.2)',
+          borderRadius: 8,
+          cursor: isLocating ? 'wait' : 'pointer',
+          fontSize: 14,
+          fontWeight: 600,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          transition: 'all 0.2s',
+          minWidth: 200,
+          opacity: isLocating ? 0.8 : 1
+        }}
+        onMouseEnter={(e) => {
+          if (!isLocating) {
+            e.currentTarget.style.background = '#333333'
+            e.currentTarget.style.color = 'white'
+            e.currentTarget.style.transform = 'translateY(-2px)'
+            e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.15)'
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isLocating) {
+            e.currentTarget.style.background = 'white'
+            e.currentTarget.style.color = '#333'
+            e.currentTarget.style.transform = 'translateY(0)'
+            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)'
+          }
+        }}
+        title="Get your current location using GPS"
+      >
+        <span style={{
+          display: 'inline-block',
+          animation: isLocating ? 'spin 1s linear infinite' : 'none'
+        }}>
+          {isLocating ? '🔄' : '📍'}
+        </span>
+        {isLocating ? 'Locating...' : 'My Location'}
+      </button>
+      <button
+        onClick={recenter}
+        style={{
+          padding: '10px 16px',
+          background: 'white',
+          border: '2px solid rgba(0,0,0,0.2)',
+          borderRadius: 8,
+          cursor: 'pointer',
+          fontSize: 14,
+          fontWeight: 600,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          transition: 'all 0.2s',
+          minWidth: 200
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = '#333333'
+          e.currentTarget.style.color = 'white'
+          e.currentTarget.style.transform = 'translateY(-2px)'
+          e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.15)'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'white'
+          e.currentTarget.style.color = '#333'
+          e.currentTarget.style.transform = 'translateY(0)'
+          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)'
+        }}
+        title="Center map on origin marker"
+      >
+        🎯 Center Origin
+      </button>
+    </div>
+  )
+}
+
+// Zoom Controls Component
+function ZoomControls() {
+  const map = useMap()
+  
+  const zoomIn = () => {
+    map.zoomIn()
+  }
+  
+  const zoomOut = () => {
+    map.zoomOut()
+  }
+  
+  return (
+    <div style={{
+      position: 'absolute',
+      top: 10,
+      left: 10,
+      zIndex: 1000,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 4,
+      background: 'white',
+      borderRadius: 8,
+      boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+      overflow: 'hidden'
+    }}>
+      <button
+        onClick={zoomIn}
+        style={{
+          padding: '12px 16px',
+          background: 'white',
+          border: 'none',
+          borderBottom: '1px solid rgba(0,0,0,0.1)',
+          cursor: 'pointer',
+          fontSize: 18,
+          fontWeight: 700,
+          color: '#333',
+          transition: 'all 0.2s',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minWidth: 44
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = '#f0f0f0'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'white'
+        }}
+        title="Zoom in"
+      >
+        +
+      </button>
+      <button
+        onClick={zoomOut}
+        style={{
+          padding: '12px 16px',
+          background: 'white',
+          border: 'none',
+          cursor: 'pointer',
+          fontSize: 18,
+          fontWeight: 700,
+          color: '#333',
+          transition: 'all 0.2s',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minWidth: 44
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = '#f0f0f0'
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'white'
+        }}
+        title="Zoom out"
+      >
+        −
+      </button>
+    </div>
   )
 }
 
@@ -485,10 +710,10 @@ function InteractiveMap({ origin, setOrigin, dest, setDest, stops, trafficIncide
         )}
       </div>
 
-      {/* Map Controls Panel - Top Left */}
+      {/* Map Controls Panel - Top Left (below zoom controls) */}
       <div style={{
         position: 'absolute',
-        top: 10,
+        top: 70,
         left: 10,
         zIndex: 1000,
         display: 'flex',
@@ -671,30 +896,56 @@ function InteractiveMap({ origin, setOrigin, dest, setDest, stops, trafficIncide
           </Polyline>
         )}
         
+        {/* Zoom Controls */}
+        <ZoomControls />
+        
         {/* Origin Marker - Green (draggable) */}
       <DraggableMarker position={origin} setPosition={setOrigin} label="Origin (drag me)" />
         
         {/* My Location Button */}
-        <RecenterButton position={origin} />
+        <RecenterButton position={origin} onLocationUpdate={setOrigin} />
         
-        {/* Destination Marker - Red */}
-        <Marker position={dest} icon={mapIcons.destination}>
+        {/* Destination Marker - Red (clickable to remove) */}
+        <Marker 
+          position={dest} 
+          icon={mapIcons.destination}
+          eventHandlers={{
+            click: (e) => {
+              // Allow clicking to see details, but don't remove on click
+              // User can click map to set new destination
+            }
+          }}
+        >
           <Popup>
-            <strong>🎯 Destination</strong><br/>
-            <small>{dest[0].toFixed(5)}, {dest[1].toFixed(5)}</small>
+            <div style={{padding: '4px 0'}}>
+              <strong>🎯 Destination</strong><br/>
+              <small>{dest[0].toFixed(5)}, {dest[1].toFixed(5)}</small><br/>
+              <small style={{color: '#666', fontSize: 11}}>Click map to change destination</small>
+            </div>
           </Popup>
       </Marker>
         
         {/* Transit Stops - Blue (conditionally shown) */}
-        {showStops && stops.slice(0, 10).map((stop) => (
+        {showStops && stops.slice(0, 50).map((stop) => (
           <Marker 
             key={stop.stop_id} 
             position={[stop.lat, stop.lng]} 
             icon={mapIcons.stop}
+            eventHandlers={{
+              click: (e) => {
+                // Stop event propagation to prevent map click handler
+                if (e.originalEvent) {
+                  e.originalEvent.stopPropagation()
+                }
+              }
+            }}
           >
             <Popup>
-              <strong>🚏 {stop.name}</strong><br/>
-              <small>📏 {stop.distance_m}m away</small>
+              <div style={{padding: '4px 0'}}>
+                <strong>🚏 {stop.name || stop.stop_name}</strong><br/>
+                <small>📏 {stop.distance_m || 0}m away</small><br/>
+                {stop.stop_id && <small style={{color: '#666', fontSize: 10}}>ID: {stop.stop_id}</small>}
+              </div>
             </Popup>
         </Marker>
       ))}
@@ -730,18 +981,34 @@ function InteractiveMap({ origin, setOrigin, dest, setDest, stops, trafficIncide
           
           return (
             <div key={`traffic-${idx}`}>
-              <Marker position={position} icon={icon}>
-                <Popup maxWidth={250}>
+              <Marker 
+                position={position} 
+                icon={icon}
+                eventHandlers={{
+                  click: (e) => {
+                    // Stop event propagation to prevent map click handler
+                    if (e.originalEvent) {
+                      e.originalEvent.stopPropagation()
+                    }
+                  }
+                }}
+              >
+                <Popup maxWidth={300}>
                   <div style={{padding:'4px 0'}}>
                     <strong style={{
                       color: isCritical ? '#6f42c1' : '#fd7e14',
                       fontSize:14
                     }}>
-                      {isCritical ? '🚨' : '⚠️'} {incident.title || incident.type || 'Traffic Incident'}
+                      {isCritical ? '🚨' : '⚠️'} {incident.title || incident.summary || incident.type || 'Traffic Incident'}
                     </strong>
                     <div style={{marginTop:8, fontSize:13, lineHeight:1.5}}>
                       {incident.description || incident.summary || 'Traffic disruption reported'}
                     </div>
+                    {incident.location && (
+                      <div style={{marginTop:6, fontSize:12, color:'#666'}}>
+                        📍 {incident.location}
+                      </div>
+                    )}
                     <div style={{
                       marginTop:8, 
                       paddingTop:8, 
@@ -750,10 +1017,18 @@ function InteractiveMap({ origin, setOrigin, dest, setDest, stops, trafficIncide
                       color:'#666'
                     }}>
                       <div><strong>Severity:</strong> {incident.severity || 'moderate'}</div>
-                      {incident.affected_routes && (
-                        <div><strong>Routes:</strong> {incident.affected_routes}</div>
+                      {incident.affected_routes && Array.isArray(incident.affected_routes) && (
+                        <div><strong>Routes:</strong> {incident.affected_routes.join(', ')}</div>
+                      )}
+                      {incident.expected_delay_min && (
+                        <div><strong>Delay:</strong> ~{incident.expected_delay_min} minutes</div>
                       )}
                       <div><strong>Time:</strong> {timeStr}</div>
+                      {incident.advice && (
+                        <div style={{marginTop:6, padding:6, background:'rgba(59, 130, 246, 0.1)', borderRadius:4, fontSize:11}}>
+                          💡 {incident.advice}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Popup>
@@ -1329,6 +1604,10 @@ function LoginPage({onLogin, isVerifying}){
       </div>
 
       <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
         @keyframes float {
           0%, 100% { transform: translateY(0) scale(1); }
           50% { transform: translateY(-20px) scale(1.05); }

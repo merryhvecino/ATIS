@@ -18,10 +18,11 @@ from .analytics import get_analytics
 
 app = FastAPI(title="ATIS Demo API", version="0.8.0")
 
-# Dev CORS (proxy handles most cases, but allow-all keeps it simple for assessment)
+# CORS configuration - supports environment variables for production
+cors_origins = os.getenv("CORS_ORIGINS", "*").split(",") if os.getenv("CORS_ORIGINS") else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
